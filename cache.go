@@ -175,9 +175,6 @@ func (c *Cache) Replace(key interface{}, value interface{}, expire time.Duration
 	if !load { // 不存在
 		c.data.Delete(key)
 		return errors.New("key not found")
-		if expire.Nanoseconds() > 0 {
-			c.expired.Store(key, v.Expire)
-		}
 	}
 
 	vold := old.(ivalue)

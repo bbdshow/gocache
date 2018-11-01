@@ -12,7 +12,7 @@ var dir, _ = os.Getwd()
 var opt = Options{
 	MaxSize:       1000,
 	CleanInterval: time.Second * 3,
-	SaveDisk:      false,
+	AutoSave:      false,
 	SaveType:      SaveAllKeysMode,
 	Filename:      dir + "/cache.back",
 }
@@ -32,7 +32,7 @@ func TestLoadData(t *testing.T) {
 	if filenameExists(dir + "/cache.back") {
 		v, ok := cache.Get("test")
 		if ok {
-			if !opt.SaveDisk {
+			if !opt.AutoSave {
 				t.Fail()
 			} else if v.(string) != "123" {
 				t.Fatal(v.(string))
