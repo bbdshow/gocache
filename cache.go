@@ -2,6 +2,7 @@ package gocache
 
 import (
 	"encoding/gob"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -12,27 +13,32 @@ import (
 
 // Options Options
 type Options struct {
-	MaxSize       int64
-	CleanInterval time.Duration
+	OverSizeClearMode cleanMode
+	MaxSize           int64
+	CleanInterval     time.Duration
 
 	SaveDisk bool
-	SaveType int
+	SaveType saveMode
 	Filename string
 }
 
+type (
+	saveMode  int
+	cleanMode int
+)
+
 // 超过 maxSize 清除策略
 const (
-	NoEviction int = iota
-	AllKeysLru
-	AllKeysRandom
-	VolatileRandom
+	NoEvictionMode cleanMode = iota
+	AllKeysRandomMode
+	VolatileRandomMode
 )
 
 // 存储规则
 const (
-	SaveAllKeys int = iota
-	SaveExpireKeys
-	SaveNoExpireKeys
+	SaveAllKeysMode saveMode = iota
+	SaveExpireKeysMode
+	SaveNoExpireKeysMode
 )
 const (
 	fileMode0666 = os.FileMode(0666)
@@ -44,13 +50,16 @@ type Cache struct {
 	expired sync.Map
 
 	enableSaveDisk bool
-	saveType       int
+	saveType       saveMode
 	filename       string
 
 	cleanInterval time.Duration
 	hitCount      int64
-	maxSize       int64
-	size          int64
+
+	overSizeClearMode cleanMode
+	// map存储的容量 利用此容量 估算限制 cache 使用内存的大小， 当不设置此值，可以忽略 set 的 error
+	maxSize int64
+	size    int64
 
 	stop chan bool
 }
@@ -63,25 +72,38 @@ type iexpire struct {
 }
 
 // Set 设置 key value 用 LoadOrStore 是方便计数 考虑缓存是 读多写少才用 LoadOrStore
-func (c *Cache) Set(key interface{}, value interface{}) {
-	if c.maxSize > 0 && c.size >= c.maxSize {
-
+func (c *Cache) Set(key interface{}, value interface{}) error {
+	if c.maxSize > 0 && atomic.LoadInt64(&c.size) >= c.maxSize {
+		if err := c.overSize(); err != nil {
+			return err
+		}
 	}
+
 	v := ivalue{Value: value}
 	_, load := c.data.LoadOrStore(key, v)
 	if !load {
 		atomic.AddInt64(&c.size, 1)
 	}
+
+	return nil
 }
 
 // SetExpire 设置 key value 用 LoadOrStore 是方便计数 考虑缓存是 读多写少才用 LoadOrStore
-func (c *Cache) SetExpire(key interface{}, value interface{}, expire time.Duration) {
+func (c *Cache) SetExpire(key interface{}, value interface{}, expire time.Duration) error {
+	if c.maxSize > 0 && atomic.LoadInt64(&c.size) >= c.maxSize {
+		if err := c.overSize(); err != nil {
+			return err
+		}
+	}
+
 	v := ivalue{Value: value, Expire: time.Now().Add(expire).UnixNano()}
 	_, load := c.data.LoadOrStore(key, v)
 	if !load {
 		atomic.AddInt64(&c.size, 1)
 	}
 	c.expired.Store(key, v.Expire)
+
+	return nil
 }
 
 // Get 获取 value 同时检测是否 过期
@@ -106,8 +128,8 @@ func (c *Cache) Get(key interface{}) (value interface{}, ok bool) {
 	return vv.Value, true
 }
 
-// Del Del
-func (c *Cache) Del(key interface{}) {
+// Delete Del
+func (c *Cache) Delete(key interface{}) {
 	_, ok := c.data.Load(key)
 	if ok {
 		c.data.Delete(key)
@@ -115,36 +137,41 @@ func (c *Cache) Del(key interface{}) {
 	}
 }
 
-// Add 不存在添加
+// Add 不存在添加, 存在则报错
 func (c *Cache) Add(key interface{}, value interface{}) error {
+
 	return nil
 }
 
+// AddExpire 不存在添加 存在则报错
 func (c *Cache) AddExpire(key interface{}, value interface{}, expire time.Duration) error {
 
 	return nil
 }
 
-// Replace 存在修改
+// Replace 存在修改， 不存在则报错
 func (c *Cache) Replace(key interface{}, value interface{}) error {
 	return nil
 }
 
-// ReplaceExpire 存在修改
+// ReplaceExpire 存在修改 不存在则报错
 func (c *Cache) ReplaceExpire(key interface{}, value interface{}, expire time.Duration) error {
 	return nil
 }
 
 // Size 数据长度
 func (c *Cache) Size() int64 {
-	return c.size
+	return atomic.LoadInt64(&c.size)
 }
 
+// IncOrDecInt64 原子计数
 func (c *Cache) IncOrDecInt64(key string, i int64) int64 {
 	var v int64
 
 	return v
 }
+
+// IncOrDecFloat64 原子计数
 func (c *Cache) IncOrDecFloat64(key string, f float64) float64 {
 	var v float64
 
@@ -172,10 +199,33 @@ func (c *Cache) Close() error {
 	return nil
 }
 
+func (c *Cache) overSize() error {
+	switch c.overSizeClearMode {
+	case NoEvictionMode:
+		return errors.New("keys over cache size")
+	case VolatileRandomMode:
+		c.expired.Range(func(k, v interface{}) bool {
+			c.Delete(k)
+			c.expired.Delete(k)
+			// 只删除一个
+			return false
+		})
+
+	case AllKeysRandomMode:
+		c.data.Range(func(k, v interface{}) bool {
+			c.Delete(k)
+			c.expired.Delete(k)
+			return false
+		})
+	}
+
+	return nil
+}
+
 func (c *Cache) deleteExpire() {
 	c.expired.Range(func(k, v interface{}) bool {
 		if expired(v.(int64)) {
-			c.Del(k)
+			c.Delete(k)
 			c.expired.Delete(k)
 		}
 		return true
@@ -259,9 +309,9 @@ func (c *Cache) saveDisk() error {
 		}
 	}()
 
-	idata := make(map[interface{}]ivalue, c.size)
+	idata := make(map[interface{}]ivalue, atomic.LoadInt64(&c.size))
 	switch c.saveType {
-	case SaveNoExpireKeys:
+	case SaveNoExpireKeysMode:
 		c.expired.Range(func(k, v interface{}) bool {
 			c.data.Delete(k)
 			return true
@@ -272,7 +322,7 @@ func (c *Cache) saveDisk() error {
 			idata[k] = v.(ivalue)
 			return true
 		})
-	case SaveExpireKeys:
+	case SaveExpireKeysMode:
 		c.data.Range(func(k, v interface{}) bool {
 			vv := v.(ivalue)
 			if vv.Expire > 0 && !vv.expired() {
@@ -281,7 +331,7 @@ func (c *Cache) saveDisk() error {
 			}
 			return true
 		})
-	case SaveAllKeys:
+	case SaveAllKeysMode:
 		c.data.Range(func(k, v interface{}) bool {
 			gob.Register(v.(ivalue))
 			idata[k] = v.(ivalue)
@@ -317,10 +367,11 @@ func filenameExists(filename string) bool {
 // NewCache NewCache
 func NewCache(opt Options) (*Cache, error) {
 	c := Cache{
-		data:          sync.Map{},
-		expired:       sync.Map{},
-		maxSize:       opt.MaxSize,
-		cleanInterval: opt.CleanInterval,
+		data:              sync.Map{},
+		expired:           sync.Map{},
+		overSizeClearMode: opt.OverSizeClearMode,
+		maxSize:           opt.MaxSize,
+		cleanInterval:     opt.CleanInterval,
 
 		enableSaveDisk: opt.SaveDisk,
 		saveType:       opt.SaveType,

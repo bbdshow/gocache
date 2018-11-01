@@ -9,17 +9,18 @@ import (
 
 var cache *Cache
 var dir, _ = os.Getwd()
+var opt = Options{
+	MaxSize:       1000,
+	CleanInterval: time.Second * 3,
+	SaveDisk:      false,
+	SaveType:      SaveAllKeys,
+	Filename:      dir + "/cache.back",
+}
 
 func init() {
 
 	var err error
-	opt := Options{
-		MaxSize:       1000,
-		CleanInterval: time.Second * 10,
-		SaveDisk:      true,
-		SaveType:      SaveAllKeys,
-		Filename:      dir + "/cache.back",
-	}
+
 	cache, err = NewCache(opt)
 	if err != nil {
 		fmt.Println("new cache ", err.Error())
@@ -31,7 +32,9 @@ func TestLoadData(t *testing.T) {
 	if filenameExists(dir + "/cache.back") {
 		v, ok := cache.Get("test")
 		if ok {
-			if v.(string) != "123" {
+			if !opt.SaveDisk {
+				t.Fail()
+			} else if v.(string) != "123" {
 				t.Fatal(v.(string))
 			}
 		}
@@ -56,7 +59,7 @@ func TestSaveDisk(t *testing.T) {
 }
 
 func TestExpireClean(t *testing.T) {
-	cache.SetExpire("expire", "expire", time.Second*3)
+	cache.SetExpire("expire", "expire", time.Second*1)
 	v, ok := cache.Get("expire")
 	if !ok {
 		t.Fail()
@@ -65,11 +68,14 @@ func TestExpireClean(t *testing.T) {
 	if v.(string) != "expire" {
 		t.Fatal(v.(string))
 	}
-	t.Log(cache.Size())
-	time.Sleep(time.Second * 11)
+	size := cache.Size()
+
+	time.Sleep(time.Second * 4)
 	v, ok = cache.Get("expire")
 	if ok {
 		t.Fail()
 	}
-	t.Log(cache.Size())
+	if cache.Size()+1 != size {
+		t.Fail()
+	}
 }
