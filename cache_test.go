@@ -13,7 +13,7 @@ var opt = Options{
 	MaxSize:       1000,
 	CleanInterval: time.Second * 3,
 	SaveDisk:      false,
-	SaveType:      SaveAllKeys,
+	SaveType:      SaveAllKeysMode,
 	Filename:      dir + "/cache.back",
 }
 

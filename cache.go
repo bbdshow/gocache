@@ -17,7 +17,7 @@ type Options struct {
 	MaxSize           int64
 	CleanInterval     time.Duration
 
-	SaveDisk bool
+	AutoSave bool
 	SaveType saveMode
 	Filename string
 }
@@ -49,9 +49,9 @@ type Cache struct {
 	data    sync.Map
 	expired sync.Map
 
-	enableSaveDisk bool
-	saveType       saveMode
-	filename       string
+	autoSave bool
+	saveType saveMode
+	filename string
 
 	cleanInterval time.Duration
 	hitCount      int64
@@ -80,9 +80,15 @@ func (c *Cache) Set(key interface{}, value interface{}) error {
 	}
 
 	v := ivalue{Value: value}
-	_, load := c.data.LoadOrStore(key, v)
+	old, load := c.data.LoadOrStore(key, v)
 	if !load {
 		atomic.AddInt64(&c.size, 1)
+	} else {
+		// 从 ttl key 变成永久 key
+		vold := old.(ivalue)
+		if vold.Expire > 0 {
+			c.expired.Delete(key)
+		}
 	}
 
 	return nil
@@ -138,44 +144,58 @@ func (c *Cache) Delete(key interface{}) {
 }
 
 // Add 不存在添加, 存在则报错
-func (c *Cache) Add(key interface{}, value interface{}) error {
+func (c *Cache) Add(key interface{}, value interface{}, expire time.Duration) error {
+	if c.maxSize > 0 && atomic.LoadInt64(&c.size) >= c.maxSize {
+		if err := c.overSize(); err != nil {
+			return err
+		}
+	}
 
-	return nil
-}
+	v := ivalue{Value: value}
+	v.Expire = time.Now().Add(expire).UnixNano()
+	old, load := c.data.LoadOrStore(key, v)
+	if !load { // 不存在
+		atomic.AddInt64(&c.size, 1)
+		if expire.Nanoseconds() > 0 {
+			c.expired.Store(key, v.Expire)
+		}
 
-// AddExpire 不存在添加 存在则报错
-func (c *Cache) AddExpire(key interface{}, value interface{}, expire time.Duration) error {
-
-	return nil
+		return nil
+	}
+	// 恢复
+	c.data.Store(key, old)
+	return errors.New("key existing")
 }
 
 // Replace 存在修改， 不存在则报错
-func (c *Cache) Replace(key interface{}, value interface{}) error {
-	return nil
-}
+func (c *Cache) Replace(key interface{}, value interface{}, expire time.Duration) error {
+	v := ivalue{Value: value}
+	v.Expire = time.Now().Add(expire).UnixNano()
+	old, load := c.data.LoadOrStore(key, v)
+	if !load { // 不存在
+		c.data.Delete(key)
+		return errors.New("key not found")
+		if expire.Nanoseconds() > 0 {
+			c.expired.Store(key, v.Expire)
+		}
+	}
 
-// ReplaceExpire 存在修改 不存在则报错
-func (c *Cache) ReplaceExpire(key interface{}, value interface{}, expire time.Duration) error {
+	vold := old.(ivalue)
+	if vold.Expire > 0 {
+		// 更新 expire
+		if expire.Nanoseconds() > 0 {
+			c.expired.Store(key, v.Expire)
+		} else {
+			c.expired.Delete(key)
+		}
+	}
+
 	return nil
 }
 
 // Size 数据长度
 func (c *Cache) Size() int64 {
 	return atomic.LoadInt64(&c.size)
-}
-
-// IncOrDecInt64 原子计数
-func (c *Cache) IncOrDecInt64(key string, i int64) int64 {
-	var v int64
-
-	return v
-}
-
-// IncOrDecFloat64 原子计数
-func (c *Cache) IncOrDecFloat64(key string, f float64) float64 {
-	var v float64
-
-	return v
 }
 
 // Flush 清除全部缓存
@@ -186,14 +206,12 @@ func (c *Cache) Flush() {
 
 // Close 保存缓存到磁盘和释放资源
 func (c *Cache) Close() error {
-	if c.enableSaveDisk {
-		if err := c.saveDisk(); err != nil {
+	if c.autoSave {
+		if err := c.SaveDisk(c.filename, c.saveType); err != nil {
 			return err
 		}
 	}
-
 	c.Flush()
-
 	c.stop <- true
 
 	return nil
@@ -225,7 +243,14 @@ func (c *Cache) overSize() error {
 func (c *Cache) deleteExpire() {
 	c.expired.Range(func(k, v interface{}) bool {
 		if expired(v.(int64)) {
-			c.Delete(k)
+			// 自动删除的时候， 判断当前 key 是否为 ttl
+			v, ok := c.data.Load(k)
+			if ok {
+				vv := v.(ivalue)
+				if vv.Expire > 0 {
+					c.Delete(k)
+				}
+			}
 			c.expired.Delete(k)
 		}
 		return true
@@ -245,8 +270,9 @@ func (c *Cache) expireClean() {
 	}
 }
 
-func (c *Cache) loadDisk() error {
-	filename, err := filepath.Abs(c.filename)
+// LoadDisk 从磁盘加载缓存到内存
+func (c *Cache) LoadDisk(filename string) error {
+	filename, err := filepath.Abs(filename)
 	if err != nil {
 		return err
 	}
@@ -277,9 +303,10 @@ func (c *Cache) loadDisk() error {
 	return nil
 }
 
-func (c *Cache) saveDisk() error {
+// SaveDisk 从内存把缓存保存在磁盘
+func (c *Cache) SaveDisk(filename string, mode saveMode) error {
 
-	filename, err := filepath.Abs(c.filename)
+	filename, err := filepath.Abs(filename)
 	if err != nil {
 		return err
 	}
@@ -310,7 +337,7 @@ func (c *Cache) saveDisk() error {
 	}()
 
 	idata := make(map[interface{}]ivalue, atomic.LoadInt64(&c.size))
-	switch c.saveType {
+	switch mode {
 	case SaveNoExpireKeysMode:
 		c.expired.Range(func(k, v interface{}) bool {
 			c.data.Delete(k)
@@ -373,15 +400,15 @@ func NewCache(opt Options) (*Cache, error) {
 		maxSize:           opt.MaxSize,
 		cleanInterval:     opt.CleanInterval,
 
-		enableSaveDisk: opt.SaveDisk,
-		saveType:       opt.SaveType,
-		filename:       opt.Filename,
+		autoSave: opt.AutoSave,
+		saveType: opt.SaveType,
+		filename: opt.Filename,
 
 		stop: make(chan bool, 1),
 	}
 
-	if c.enableSaveDisk {
-		if err := c.loadDisk(); err != nil {
+	if c.autoSave {
+		if err := c.LoadDisk(c.filename); err != nil {
 			return nil, err
 		}
 	}
