@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// 利用 sync.map 达到读取性能相对更高，sync.map 并不太适应大量写入的缓存
+// sync.map 在空间上并不占优势。
+
 // Options Options
 type Options struct {
 	OverSizeClearMode cleanMode

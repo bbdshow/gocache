@@ -28,18 +28,7 @@ func init() {
 	}
 	fmt.Println("cache init")
 }
-func TestLoadData(t *testing.T) {
-	if filenameExists(dir + "/cache.back") {
-		v, ok := cache.Get("test")
-		if ok {
-			if !opt.AutoSave {
-				t.Fail()
-			} else if v.(string) != "123" {
-				t.Fatal(v.(string))
-			}
-		}
-	}
-}
+
 func TestGetAndSet(t *testing.T) {
 	cache.Set("test", "123")
 
@@ -49,12 +38,6 @@ func TestGetAndSet(t *testing.T) {
 	}
 	if v.(string) != "123" {
 		t.Fatal(v.(string))
-	}
-}
-
-func TestSaveDisk(t *testing.T) {
-	if err := cache.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
 
@@ -77,5 +60,27 @@ func TestExpireClean(t *testing.T) {
 	}
 	if cache.Size()+1 != size {
 		t.Fail()
+	}
+}
+
+func TestSaveDisk(t *testing.T) {
+	if err := cache.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoadData(t *testing.T) {
+	c, err := NewCache(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v, ok := c.Get("test")
+	if ok {
+		if !opt.AutoSave {
+			t.Fail()
+		} else if v.(string) != "123" {
+			t.Fatal(v.(string))
+		}
 	}
 }
