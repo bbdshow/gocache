@@ -227,4 +227,46 @@ func TestCacheFunc(t *testing.T) {
 	if v.(int) != 5 || e.Nanoseconds() <= 0 {
 		t.Fail()
 	}
+
+	opt.MaxSize = 2
+	opt.OverSizeClearMode = VolatileRandomMode
+	c, _ = NewCache(opt)
+	c.Flush()
+	if err := c.Set("t1", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set("t2", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set("t3", 1); err == nil {
+		t.Fatal("t3 error")
+	}
+	c.Delete("t2")
+	if err := c.SetExpire("t2", 1, time.Minute); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set("t3", 1); err != nil {
+		t.Fatal("t3 error")
+	}
+
+	if c.Size() > 2 {
+		t.Fatal("size err", c.Size())
+	}
+
+	opt.MaxSize = 2
+	opt.OverSizeClearMode = AllKeysRandomMode
+	c, _ = NewCache(opt)
+	c.Flush()
+	if err := c.Set("t1", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set("t2", 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Set("t3", 1); err != nil {
+		t.Fatal(err)
+	}
+	if c.Size() > 2 {
+		t.Fatal("size err", c.Size())
+	}
 }

@@ -93,6 +93,9 @@ func (c *Cache) Set(key interface{}, value interface{}) error {
 		if err := c.overSize(); err != nil {
 			return err
 		}
+		if atomic.LoadInt64(&c.size) >= c.maxSize {
+			return errors.New("keys over cache size")
+		}
 	}
 
 	v := ivalue{Value: value}
@@ -117,6 +120,9 @@ func (c *Cache) SetExpire(key interface{}, value interface{}, expire time.Durati
 	if c.maxSize > 0 && atomic.LoadInt64(&c.size) >= c.maxSize {
 		if err := c.overSize(); err != nil {
 			return err
+		}
+		if atomic.LoadInt64(&c.size) >= c.maxSize {
+			return errors.New("keys over cache size")
 		}
 	}
 
