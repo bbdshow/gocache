@@ -11,17 +11,26 @@ import (
 	"time"
 )
 
-// 利用 sync.map 达到读取性能相对更高，sync.map 并不太适应大量写入的缓存
-// sync.map 在空间上并不占优势。
+// 利用 sync.map 达到读取性能相对更高，sync.map 并不太适应大量写入的缓存操作, 且因为计数使用了 LoadOrStrore
+// sync.map 在空间上并不占优势。如果存在频繁写入建议使用 RwMutex map  github.com/patrickmn/go-cache
 
-// Options Options
+// 在 4 核 机器上 锁竞争不明显， 所以 RwMutex map 在性能上更占优势，但是当 cpu 核数 往上时， 锁竞争变大， sync.map 的优势就体现出来了。
+// 性能测试 引用 https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c
+
+// Options 配置选项说明
 type Options struct {
+	// 超过容量限制自动清除 keys 方式
 	OverSizeClearMode cleanMode
-	MaxSize           int64
-	CleanInterval     time.Duration
+	// keys 容量限制，通过此预估内存使用量
+	MaxSize int64
+	// 定时清除过期的 key, 未设置，则不清除
+	CleanInterval time.Duration
 
+	// 自动保存缓存内容到文件
 	AutoSave bool
+	// 保存的内容类型
 	SaveType saveMode
+	// 保存到文件名， 绝对路径 eg: /tmp/cache.back
 	Filename string
 }
 
@@ -43,6 +52,7 @@ const (
 	SaveExpireKeysMode
 	SaveNoExpireKeysMode
 )
+
 const (
 	fileMode0666 = os.FileMode(0666)
 )
@@ -70,8 +80,6 @@ type Cache struct {
 type ivalue struct {
 	Expire int64
 	Value  interface{}
-}
-type iexpire struct {
 }
 
 // Set 设置 key value 用 LoadOrStore 是方便计数 考虑缓存是 读多写少才用 LoadOrStore
@@ -135,6 +143,33 @@ func (c *Cache) Get(key interface{}) (value interface{}, ok bool) {
 	}
 
 	return vv.Value, true
+}
+
+// GetWithExpire 返回 key 剩余时间
+func (c *Cache) GetWithExpire(key interface{}) (interface{}, time.Duration, bool) {
+	v, ok := c.data.Load(key)
+	if !ok {
+		return nil, 0, false
+	}
+
+	vv := v.(ivalue)
+	if vv.expired() {
+
+		c.data.Delete(key)
+		atomic.AddInt64(&c.size, -1)
+
+		if vv.Expire > 0 {
+			c.expired.Delete(key)
+		}
+		return nil, 0, false
+	}
+
+	return vv.Value, time.Unix(0, vv.Expire).Sub(time.Now()), true
+}
+
+// Range 遍历缓存  f return false = range break
+func (c *Cache) Range(f func(key, value interface{}) bool) {
+	c.data.Range(f)
 }
 
 // Delete Del
@@ -258,6 +293,9 @@ func (c *Cache) deleteExpire() {
 }
 
 func (c *Cache) expireClean() {
+	if c.cleanInterval.Nanoseconds() <= 0 {
+		return
+	}
 	ticker := time.NewTicker(c.cleanInterval)
 	for {
 		select {
