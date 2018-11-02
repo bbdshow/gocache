@@ -228,9 +228,13 @@ func TestCacheFunc(t *testing.T) {
 		t.Fail()
 	}
 
+}
+
+func TestOverSizeVolatileRandomModeDeleteKey(t *testing.T) {
 	opt.MaxSize = 2
 	opt.OverSizeClearMode = VolatileRandomMode
-	c, _ = NewCache(opt)
+	opt.CleanInterval = 0
+	c, _ := NewCache(opt)
 	c.Flush()
 	if err := c.Set("t1", 1); err != nil {
 		t.Fatal(err)
@@ -252,10 +256,13 @@ func TestCacheFunc(t *testing.T) {
 	if c.Size() > 2 {
 		t.Fatal("size err", c.Size())
 	}
+}
 
+func TestOverSizeAllKeysRandomModeDeleteKey(t *testing.T) {
 	opt.MaxSize = 2
 	opt.OverSizeClearMode = AllKeysRandomMode
-	c, _ = NewCache(opt)
+	opt.CleanInterval = 0
+	c, _ := NewCache(opt)
 	c.Flush()
 	if err := c.Set("t1", 1); err != nil {
 		t.Fatal(err)
