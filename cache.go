@@ -3,7 +3,6 @@ package gocache
 import (
 	"encoding/gob"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -41,15 +40,21 @@ type (
 
 // 超过 maxSize 清除策略
 const (
+	// 超出容量报错
 	NoEvictionMode cleanMode = iota
+	// 随机删除 keys 的某一 key
 	AllKeysRandomMode
+	// 随机删除 设置过期时间中keys de某一 key
 	VolatileRandomMode
 )
 
 // 存储规则
 const (
+	// 保存所有的 keys value
 	SaveAllKeysMode saveMode = iota
+	// 只保存设置过期时间的 keys value
 	SaveExpireKeysMode
+	// 只保存永久 keys value
 	SaveNoExpireKeysMode
 )
 
@@ -91,15 +96,17 @@ func (c *Cache) Set(key interface{}, value interface{}) error {
 	}
 
 	v := ivalue{Value: value}
-	old, load := c.data.LoadOrStore(key, v)
+	loadV, load := c.data.LoadOrStore(key, v)
 	if !load {
 		atomic.AddInt64(&c.size, 1)
 	} else {
 		// 从 ttl key 变成永久 key
-		vold := old.(ivalue)
+		vold := loadV.(ivalue)
 		if vold.Expire > 0 {
 			c.expired.Delete(key)
 		}
+
+		c.data.Store(key, value)
 	}
 
 	return nil
@@ -117,6 +124,8 @@ func (c *Cache) SetExpire(key interface{}, value interface{}, expire time.Durati
 	_, load := c.data.LoadOrStore(key, v)
 	if !load {
 		atomic.AddInt64(&c.size, 1)
+	} else {
+		c.data.Store(key, v)
 	}
 	c.expired.Store(key, v.Expire)
 
@@ -154,7 +163,6 @@ func (c *Cache) GetWithExpire(key interface{}) (interface{}, time.Duration, bool
 
 	vv := v.(ivalue)
 	if vv.expired() {
-
 		c.data.Delete(key)
 		atomic.AddInt64(&c.size, -1)
 
@@ -163,13 +171,15 @@ func (c *Cache) GetWithExpire(key interface{}) (interface{}, time.Duration, bool
 		}
 		return nil, 0, false
 	}
-
 	return vv.Value, time.Unix(0, vv.Expire).Sub(time.Now()), true
 }
 
 // Range 遍历缓存  f return false = range break
 func (c *Cache) Range(f func(key, value interface{}) bool) {
-	c.data.Range(f)
+	c.data.Range(func(k, v interface{}) bool {
+		vv := v.(ivalue)
+		return f(k, vv.Value)
+	})
 }
 
 // Delete Del
@@ -190,42 +200,19 @@ func (c *Cache) Add(key interface{}, value interface{}, expire time.Duration) er
 	}
 
 	v := ivalue{Value: value}
-	v.Expire = time.Now().Add(expire).UnixNano()
-	old, load := c.data.LoadOrStore(key, v)
+	if expire.Nanoseconds() > 0 {
+		v.Expire = time.Now().Add(expire).UnixNano()
+	}
+	_, load := c.data.LoadOrStore(key, v)
 	if !load { // 不存在
 		atomic.AddInt64(&c.size, 1)
 		if expire.Nanoseconds() > 0 {
 			c.expired.Store(key, v.Expire)
 		}
-
 		return nil
 	}
-	// 恢复
-	c.data.Store(key, old)
+
 	return errors.New("key existing")
-}
-
-// Replace 存在修改， 不存在则报错
-func (c *Cache) Replace(key interface{}, value interface{}, expire time.Duration) error {
-	v := ivalue{Value: value}
-	v.Expire = time.Now().Add(expire).UnixNano()
-	old, load := c.data.LoadOrStore(key, v)
-	if !load { // 不存在
-		c.data.Delete(key)
-		return errors.New("key not found")
-	}
-
-	vold := old.(ivalue)
-	if vold.Expire > 0 {
-		// 更新 expire
-		if expire.Nanoseconds() > 0 {
-			c.expired.Store(key, v.Expire)
-		} else {
-			c.expired.Delete(key)
-		}
-	}
-
-	return nil
 }
 
 // Size 数据长度
@@ -237,6 +224,7 @@ func (c *Cache) Size() int64 {
 func (c *Cache) Flush() {
 	c.data = sync.Map{}
 	c.expired = sync.Map{}
+	c.size = 0
 }
 
 // Close 保存缓存到磁盘和释放资源
@@ -293,9 +281,6 @@ func (c *Cache) deleteExpire() {
 }
 
 func (c *Cache) expireClean() {
-	if c.cleanInterval.Nanoseconds() <= 0 {
-		return
-	}
 	ticker := time.NewTicker(c.cleanInterval)
 	for {
 		select {
@@ -370,7 +355,7 @@ func (c *Cache) SaveDisk(filename string, mode saveMode) error {
 
 	defer func() {
 		if x := recover(); x != nil {
-			err = fmt.Errorf("Error registering ivalue types with Gob library")
+			err = errors.New("Error registering ivalue types with Gob library")
 		}
 	}()
 
