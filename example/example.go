@@ -2,10 +2,11 @@ package main
 
 import (
 	"fmt"
-	"gocache"
 	"log"
 	"os"
 	"time"
+
+	"github.com/hopingtop/gocache"
 )
 
 var dir, _ = os.Getwd()

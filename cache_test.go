@@ -1,13 +1,11 @@
 package gocache
 
 import (
-	"fmt"
 	"os"
 	"testing"
 	"time"
 )
 
-var cache *Cache
 var dir, _ = os.Getwd()
 var opt = Options{
 	MaxSize:       1000,
@@ -16,18 +14,7 @@ var opt = Options{
 	SaveType:      SaveAllKeysMode,
 	Filename:      dir + "/cache.back",
 }
-
-func init() {
-
-	var err error
-
-	cache, err = NewCache(opt)
-	if err != nil {
-		fmt.Println("new cache ", err.Error())
-		os.Exit(1)
-	}
-	fmt.Println("cache init")
-}
+var cache, _ = NewCache(opt)
 
 func TestGetAndSet(t *testing.T) {
 	cache.Set("test", "123")
@@ -60,28 +47,6 @@ func TestExpireClean(t *testing.T) {
 	}
 	if cache.Size()+1 != size {
 		t.Fail()
-	}
-}
-
-func TestSaveDisk(t *testing.T) {
-	if err := cache.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestLoadData(t *testing.T) {
-	c, err := NewCache(opt)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	v, ok := c.Get("test")
-	if ok {
-		if !opt.AutoSave {
-			t.Fail()
-		} else if v.(string) != "123" {
-			t.Fatal(v.(string))
-		}
 	}
 }
 
@@ -213,5 +178,53 @@ func TestAutoSaveAndLoadMode(t *testing.T) {
 	v, ok = c.Get("SaveExpireKeysMode")
 	if ok {
 		t.Fatal("save data mode err")
+	}
+}
+
+func TestCacheFunc(t *testing.T) {
+	opt.CleanInterval = time.Millisecond * 500
+	opt.MaxSize = 5
+	opt.OverSizeClearMode = NoEvictionMode
+	c, _ := NewCache(opt)
+	c.Flush()
+	c.Set("t1", 1)
+	c.Set("t2", 2)
+	c.Set("t3", 3)
+	c.Set("t4", 4)
+	c.SetExpire("t5", 5, time.Second)
+	if err := c.SetExpire("t6", 6, time.Second); err == nil {
+		t.Fatal("size limit fatal")
+	}
+
+	if c.Size() != 5 {
+		t.Fatal("size loss")
+	}
+
+	time.Sleep(time.Second * 2)
+	if c.Size() != 4 {
+		t.Fatal("expired failure", c.Size())
+	}
+
+	if err := c.Add("t5", 5, time.Second*3); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.Add("t5", 5, 0); err == nil {
+		t.Fatal("add failure")
+	}
+
+	c.Range(func(k, v interface{}) bool {
+		if k.(string) == "t2" {
+			return false
+		}
+		return true
+	})
+
+	v, e, ok := c.GetWithExpire("t5")
+	if !ok {
+		t.Fatal("Add err not found")
+	}
+	if v.(int) != 5 || e.Nanoseconds() <= 0 {
+		t.Fail()
 	}
 }

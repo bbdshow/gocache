@@ -11,10 +11,10 @@
 
 ### 为什么选择 sync.Map 
 
-利用 sync.map 达到读取性能相对更高，sync.map 并不太适应大量写入的缓存操作, 且因为计数使用了 LoadOrStrore 对 key 计数。
-sync.map 在空间上并不占优势。如果存在频繁写入建议使用 RwMutex map  github.com/patrickmn/go-cache
+利用 sync.map 达到读取性能相对更高，sync.Map 并不太适应大量写入的缓存操作, 且因为计数使用了 LoadOrStrore 对 key 计数。
+sync.Map 在空间上并不占优势。如果存在频繁写入建议使用 RwMutex map  github.com/patrickmn/go-cache
 
-在 4 核 机器上 锁竞争不明显， 所以 RwMutex map 在性能上更占优势，但是当 cpu 核数 往上时， 锁竞争变大， sync.map 的优势就体现出来了。
+在 4 核 机器上 锁竞争不明显， 所以 RwMutex map 在性能上更占优势，但是当 cpu 核数 往上时， 锁竞争变大， sync.Map 的优势就体现出来了。
 性能测试 引用 https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c
 
 
@@ -26,10 +26,10 @@ package main
 
 import (
 	"fmt"
-	"gocache"
 	"log"
 	"os"
-	"time"
+    "time"
+    "github.com/hopingtop/gocache"
 )
 
 var dir, _ = os.Getwd()
