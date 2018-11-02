@@ -14,3 +14,4 @@
 *.back
 
 test/
+coverage.txt
