@@ -109,7 +109,7 @@ func (c *Cache) Set(key interface{}, value interface{}) error {
 			c.expired.Delete(key)
 		}
 
-		c.data.Store(key, value)
+		c.data.Store(key, v)
 	}
 
 	return nil

@@ -23,8 +23,42 @@ func TestGetAndSet(t *testing.T) {
 	if !ok {
 		t.Fail()
 	}
+
 	if v.(string) != "123" {
 		t.Fatal(v.(string))
+	}
+
+	if err := cache.SetExpire("testExpire", "testExpire", time.Minute); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := cache.Set("testExpire", "testExpire"); err != nil {
+		t.Fatal(err)
+	}
+	_, e, ok := cache.GetWithExpire("testExpire")
+	if !ok || e.Nanoseconds() > 0 {
+		t.Fail()
+	}
+
+	if err := cache.SetExpire("testExpire", "testExpire", time.Microsecond*100); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Microsecond * 150)
+	_, ok = cache.Get("testExpire")
+	if ok {
+		t.Fail()
+	}
+	if err := cache.SetExpire("testExpire", "testExpire", time.Microsecond*100); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(time.Microsecond * 150)
+	_, e, ok = cache.GetWithExpire("testExpire")
+	if ok || e.Nanoseconds() > 0 {
+		t.Fail()
+	}
+
+	if err := cache.Add("test", 1, 0); err == nil {
+		t.Fail()
 	}
 }
 
@@ -50,33 +84,6 @@ func TestExpireClean(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoad(t *testing.T) {
-	opt.SaveType = SaveAllKeysMode
-	c, err := NewCache(opt)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := c.Set("SaveAllKeysMode", "SaveAllKeysMode"); err != nil {
-		t.Fatal(err)
-	}
-	c.SaveDisk(opt.Filename, opt.SaveType)
-
-	opt.AutoSave = false
-	c.Close()
-
-	// 重置缓存
-	c, err = NewCache(opt)
-	if err := c.LoadDisk(opt.Filename); err != nil {
-		t.Fatal(err)
-	}
-
-	v, ok := c.Get("SaveAllKeysMode")
-	if !ok || v.(string) != "SaveAllKeysMode" {
-		t.Fatal("load data loss")
-	}
-}
-
 func TestAutoSaveAndLoad(t *testing.T) {
 	opt.SaveType = SaveAllKeysMode
 	opt.AutoSave = true
@@ -92,6 +99,7 @@ func TestAutoSaveAndLoad(t *testing.T) {
 	if err := c.SetExpire("SaveAllKeysMode", "SaveAllKeysMode", time.Minute); err != nil {
 		t.Fatal(err)
 	}
+
 	// 模拟程序正常退出 close
 	if err := c.Close(); err != nil {
 		t.Fatal(err)
@@ -106,6 +114,37 @@ func TestAutoSaveAndLoad(t *testing.T) {
 	}
 
 	v, ok = c.Get("SaveAllKeysMode")
+	if !ok || v.(string) != "SaveAllKeysMode" {
+		t.Fatal("load data loss")
+	}
+}
+
+func TestSaveAndLoad(t *testing.T) {
+	opt.SaveType = SaveAllKeysMode
+	c, err := NewCache(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.Set("SaveAllKeysMode", "SaveAllKeysMode"); err != nil {
+		t.Fatal(err)
+	}
+	c.SaveDisk(opt.Filename, opt.SaveType)
+
+	if err := c.SaveDisk("", opt.SaveType); err == nil {
+		t.Fail()
+	}
+
+	opt.AutoSave = false
+	c.Close()
+
+	// 重置缓存
+	c, err = NewCache(opt)
+	if err := c.LoadDisk(opt.Filename); err != nil {
+		t.Fatal(err)
+	}
+
+	v, ok := c.Get("SaveAllKeysMode")
 	if !ok || v.(string) != "SaveAllKeysMode" {
 		t.Fatal("load data loss")
 	}
@@ -252,7 +291,9 @@ func TestOverSizeVolatileRandomModeDeleteKey(t *testing.T) {
 	if err := c.Set("t3", 1); err != nil {
 		t.Fatal("t3 error")
 	}
-
+	if err := c.SetExpire("t4", 1, time.Minute); err == nil {
+		t.Fatal("t4 error")
+	}
 	if c.Size() > 2 {
 		t.Fatal("size err", c.Size())
 	}
