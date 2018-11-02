@@ -1,9 +1,7 @@
 # gocache
 
 [![Build Status](https://travis-ci.org/hopingtop/gocache.svg?branch=master)](https://travis-ci.org/hopingtop/gocache)
-
 [![codecov](https://codecov.io/gh/hopingtop/gocache/branch/master/graph/badge.svg)](https://codecov.io/gh/hopingtop/gocache)
-
 [![Go Report Card](https://goreportcard.com/badge/github.com/hopingtop/gocache)](https://goreportcard.com/report/github.com/hopingtop/gocache)
 
 ### 特性
