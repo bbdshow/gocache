@@ -16,8 +16,8 @@ import (
 // 在 4 核 机器上 锁竞争不明显， 所以 RwMutex map 在性能上更占优势，但是当 cpu 核数 往上时， 锁竞争变大， sync.map 的优势就体现出来了。
 // 性能测试 引用 https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c
 
-// Options 配置选项说明
-type Options struct {
+// Config 配置选项说明
+type Config struct {
 	// 超过容量限制自动清除 keys 方式
 	OverSizeClearMode cleanMode
 	// keys 容量限制，通过此预估内存使用量
@@ -421,17 +421,17 @@ func filenameExists(filename string) bool {
 }
 
 // NewCache NewCache
-func NewCache(opt Options) (*Cache, error) {
+func NewCache(cfg Config) (*Cache, error) {
 	c := Cache{
 		data:              sync.Map{},
 		expired:           sync.Map{},
-		overSizeClearMode: opt.OverSizeClearMode,
-		maxSize:           opt.MaxSize,
-		cleanInterval:     opt.CleanInterval,
+		overSizeClearMode: cfg.OverSizeClearMode,
+		maxSize:           cfg.MaxSize,
+		cleanInterval:     cfg.CleanInterval,
 
-		autoSave: opt.AutoSave,
-		saveType: opt.SaveType,
-		filename: opt.Filename,
+		autoSave: cfg.AutoSave,
+		saveType: cfg.SaveType,
+		filename: cfg.Filename,
 
 		stop: make(chan bool, 1),
 	}

@@ -7,14 +7,14 @@ import (
 )
 
 var dir, _ = os.Getwd()
-var opt = Options{
+var cfg = Config{
 	MaxSize:       1000,
 	CleanInterval: time.Millisecond * 500,
 	AutoSave:      false,
 	SaveType:      SaveAllKeysMode,
 	Filename:      dir + "/cache.back",
 }
-var cache, _ = NewCache(opt)
+var cache, _ = NewCache(cfg)
 
 func TestGetAndSet(t *testing.T) {
 	cache.Set("test", "123")
@@ -85,10 +85,10 @@ func TestExpireClean(t *testing.T) {
 }
 
 func TestAutoSaveAndLoad(t *testing.T) {
-	opt.SaveType = SaveAllKeysMode
-	opt.AutoSave = true
+	cfg.SaveType = SaveAllKeysMode
+	cfg.AutoSave = true
 
-	c, err := NewCache(opt)
+	c, err := NewCache(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +106,7 @@ func TestAutoSaveAndLoad(t *testing.T) {
 	}
 
 	// 重置缓存, 自动加载已经保存的文件
-	c, err = NewCache(opt)
+	c, err = NewCache(cfg)
 
 	v, ok := c.Get("autoSaveAllKeysMode")
 	if !ok || v.(string) != "SaveAllKeysMode" {
@@ -120,8 +120,8 @@ func TestAutoSaveAndLoad(t *testing.T) {
 }
 
 func TestSaveAndLoad(t *testing.T) {
-	opt.SaveType = SaveAllKeysMode
-	c, err := NewCache(opt)
+	cfg.SaveType = SaveAllKeysMode
+	c, err := NewCache(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,18 +129,18 @@ func TestSaveAndLoad(t *testing.T) {
 	if err := c.Set("SaveAllKeysMode", "SaveAllKeysMode"); err != nil {
 		t.Fatal(err)
 	}
-	c.SaveDisk(opt.Filename, opt.SaveType)
+	c.SaveDisk(cfg.Filename, cfg.SaveType)
 
-	if err := c.SaveDisk("", opt.SaveType); err == nil {
+	if err := c.SaveDisk("", cfg.SaveType); err == nil {
 		t.Fail()
 	}
 
-	opt.AutoSave = false
+	cfg.AutoSave = false
 	c.Close()
 
 	// 重置缓存
-	c, err = NewCache(opt)
-	if err := c.LoadDisk(opt.Filename); err != nil {
+	c, err = NewCache(cfg)
+	if err := c.LoadDisk(cfg.Filename); err != nil {
 		t.Fatal(err)
 	}
 
@@ -151,10 +151,10 @@ func TestSaveAndLoad(t *testing.T) {
 }
 
 func TestAutoSaveAndLoadMode(t *testing.T) {
-	opt.SaveType = SaveExpireKeysMode
-	opt.AutoSave = true
+	cfg.SaveType = SaveExpireKeysMode
+	cfg.AutoSave = true
 
-	c, err := NewCache(opt)
+	c, err := NewCache(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,7 +173,7 @@ func TestAutoSaveAndLoadMode(t *testing.T) {
 	}
 
 	// 重置缓存, 自动加载已经保存的文件
-	c, err = NewCache(opt)
+	c, err = NewCache(cfg)
 
 	v, ok := c.Get("SaveExpireKeysMode")
 	if !ok || v.(string) != "SaveExpireKeysMode" {
@@ -186,9 +186,9 @@ func TestAutoSaveAndLoadMode(t *testing.T) {
 	}
 
 	// 保存永久 key
-	opt.SaveType = SaveNoExpireKeysMode
+	cfg.SaveType = SaveNoExpireKeysMode
 
-	c, err = NewCache(opt)
+	c, err = NewCache(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestAutoSaveAndLoadMode(t *testing.T) {
 	}
 
 	// 重置缓存, 自动加载已经保存的文件
-	c, err = NewCache(opt)
+	c, err = NewCache(cfg)
 
 	v, ok = c.Get("testSaveMode")
 	if !ok || v.(string) != "SaveAllKeysMode" {
@@ -221,10 +221,10 @@ func TestAutoSaveAndLoadMode(t *testing.T) {
 }
 
 func TestCacheFunc(t *testing.T) {
-	opt.CleanInterval = time.Millisecond * 500
-	opt.MaxSize = 5
-	opt.OverSizeClearMode = NoEvictionMode
-	c, _ := NewCache(opt)
+	cfg.CleanInterval = time.Millisecond * 500
+	cfg.MaxSize = 5
+	cfg.OverSizeClearMode = NoEvictionMode
+	c, _ := NewCache(cfg)
 	c.Flush()
 	c.Set("t1", 1)
 	c.Set("t2", 2)
@@ -270,10 +270,10 @@ func TestCacheFunc(t *testing.T) {
 }
 
 func TestOverSizeVolatileRandomModeDeleteKey(t *testing.T) {
-	opt.MaxSize = 2
-	opt.OverSizeClearMode = VolatileRandomMode
-	opt.CleanInterval = 0
-	c, _ := NewCache(opt)
+	cfg.MaxSize = 2
+	cfg.OverSizeClearMode = VolatileRandomMode
+	cfg.CleanInterval = 0
+	c, _ := NewCache(cfg)
 	c.Flush()
 	if err := c.Set("t1", 1); err != nil {
 		t.Fatal(err)
@@ -300,10 +300,10 @@ func TestOverSizeVolatileRandomModeDeleteKey(t *testing.T) {
 }
 
 func TestOverSizeAllKeysRandomModeDeleteKey(t *testing.T) {
-	opt.MaxSize = 2
-	opt.OverSizeClearMode = AllKeysRandomMode
-	opt.CleanInterval = 0
-	c, _ := NewCache(opt)
+	cfg.MaxSize = 2
+	cfg.OverSizeClearMode = AllKeysRandomMode
+	cfg.CleanInterval = 0
+	c, _ := NewCache(cfg)
 	c.Flush()
 	if err := c.Set("t1", 1); err != nil {
 		t.Fatal(err)

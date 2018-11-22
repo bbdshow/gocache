@@ -10,7 +10,7 @@ import (
 )
 
 var dir, _ = os.Getwd()
-var opt = gocache.Options{
+var cfg = gocache.Config{
 	MaxSize:       1000,
 	CleanInterval: time.Millisecond * 500,
 	AutoSave:      true,
@@ -19,7 +19,7 @@ var opt = gocache.Options{
 }
 
 func main() {
-	cache, err := gocache.NewCache(opt)
+	cache, err := gocache.NewCache(cfg)
 	if err != nil {
 		log.Panic(err.Error())
 	}
