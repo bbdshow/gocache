@@ -1,8 +1,8 @@
 # gocache
 
-[![Build Status](https://travis-ci.org/hopingtop/gocache.svg?branch=master)](https://travis-ci.org/hopingtop/gocache)
-[![codecov](https://codecov.io/gh/hopingtop/gocache/branch/master/graph/badge.svg)](https://codecov.io/gh/hopingtop/gocache)
-[![Go Report Card](https://goreportcard.com/badge/github.com/hopingtop/gocache)](https://goreportcard.com/report/github.com/hopingtop/gocache)
+[![Build Status](https://travis-ci.org/huzhongqing/gocache.svg?branch=master)](https://travis-ci.org/huzhongqing/gocache)
+[![codecov](https://codecov.io/gh/huzhongqing/gocache/branch/master/graph/badge.svg)](https://codecov.io/gh/huzhongqing/gocache)
+[![Go Report Card](https://goreportcard.com/badge/github.com/huzhongqing/gocache)](https://goreportcard.com/report/github.com/huzhongqing/gocache)
 
 ### 特性
 
@@ -33,7 +33,7 @@ import (
 	"log"
 	"os"
     "time"
-    "github.com/hopingtop/gocache"
+    "github.com/huzhongqing/gocache"
 )
 
 var dir, _ = os.Getwd()

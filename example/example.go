@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/hopingtop/gocache"
+	"github.com/huzhongqing/gocache"
 )
 
 var dir, _ = os.Getwd()

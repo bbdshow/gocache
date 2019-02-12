@@ -10,7 +10,7 @@ notifications:
   email: false
 
 install:
-  - go get github.com/hopingtop/gocache
+  - go get github.com/huzhongqing/gocache
 script:
   - pushd $TRAVIS_BUILD_DIR
   - ./test.sh
