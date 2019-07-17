@@ -299,6 +299,11 @@ func (c *Cache) expireClean() {
 	}
 }
 
+// GobRegister 当存储的 value 为自定义结构体时，同时需要缓存写入文件，需要注册
+func GobRegister(v interface{}) {
+	gob.Register(v)
+}
+
 // LoadDisk 从磁盘加载缓存到内存
 func (c *Cache) LoadDisk(filename string) error {
 	filename, err := filepath.Abs(filename)
@@ -315,7 +320,6 @@ func (c *Cache) LoadDisk(filename string) error {
 		return err
 	}
 	defer file.Close()
-
 	dec := gob.NewDecoder(file)
 	idata := make(map[interface{}]ivalue, c.maxSize)
 	if err := dec.Decode(&idata); err != nil {
@@ -359,11 +363,7 @@ func (c *Cache) SaveDisk(filename string, mode saveMode) error {
 
 	enc := gob.NewEncoder(file)
 
-	defer func() {
-		if x := recover(); x != nil {
-			err = errors.New("Error registering ivalue types with Gob library")
-		}
-	}()
+	GobRegister(ivalue{})
 
 	idata := make(map[interface{}]ivalue, atomic.LoadInt64(&c.size))
 	switch mode {
@@ -374,7 +374,6 @@ func (c *Cache) SaveDisk(filename string, mode saveMode) error {
 		})
 
 		c.data.Range(func(k, v interface{}) bool {
-			gob.Register(v.(ivalue))
 			idata[k] = v.(ivalue)
 			return true
 		})
@@ -382,14 +381,12 @@ func (c *Cache) SaveDisk(filename string, mode saveMode) error {
 		c.data.Range(func(k, v interface{}) bool {
 			vv := v.(ivalue)
 			if vv.Expire > 0 && !vv.expired() {
-				gob.Register(vv)
 				idata[k] = vv
 			}
 			return true
 		})
 	case SaveAllKeysMode:
 		c.data.Range(func(k, v interface{}) bool {
-			gob.Register(v.(ivalue))
 			idata[k] = v.(ivalue)
 			return true
 		})

@@ -12,7 +12,7 @@ var cfg = Config{
 	CleanInterval: time.Millisecond * 500,
 	AutoSave:      false,
 	SaveType:      SaveAllKeysMode,
-	Filename:      dir + "/cache.back",
+	Filename:      dir + "/store.cache",
 }
 var cache, _ = NewCache(cfg)
 
@@ -316,5 +316,44 @@ func TestOverSizeAllKeysRandomModeDeleteKey(t *testing.T) {
 	}
 	if c.Size() > 2 {
 		t.Fatal("size err", c.Size())
+	}
+}
+
+type IStruct struct {
+	Value string
+}
+
+func TestGobRegister(t *testing.T) {
+	icfg := cfg
+	icfg.Filename = dir + "/gob.cache"
+
+	GobRegister(IStruct{})
+
+	c, err := NewCache(icfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := c.Set("IStruct", IStruct{Value: "1"}); err != nil {
+		t.Fatal(err)
+	}
+
+	icfg.AutoSave = true
+	c.Close()
+
+	// 重置缓存
+	c1, err := NewCache(icfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	v, ok := c1.Get("IStruct")
+	if !ok {
+		t.Fatal("load data loss")
+	}
+
+	vv := v.(IStruct)
+	if vv.Value != "1" {
+		t.Fatal("load data loss")
 	}
 }
