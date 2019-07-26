@@ -1,6 +1,7 @@
 package gocache
 
 import (
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,7 +12,7 @@ const (
 )
 
 type Disk struct {
-	filename string
+	Filename string
 }
 
 //  NewDisk  filename
@@ -33,7 +34,7 @@ func NewDisk(filename string) *Disk {
 	}
 
 	d := Disk{
-		filename: filename,
+		Filename: filename,
 	}
 
 	return &d
@@ -41,18 +42,18 @@ func NewDisk(filename string) *Disk {
 
 // WriteToFile 如果之前文件存在，则删除
 func (d *Disk) WriteToFile(data []byte) error {
-	if FilenameExists(d.filename) {
-		if err := os.Remove(d.filename); err != nil {
+	if FilenameExists(d.Filename) {
+		if err := os.Remove(d.Filename); err != nil {
 			return err
 		}
 	} else {
-		dir := filepath.Dir(d.filename)
+		dir := filepath.Dir(d.Filename)
 		if err := os.MkdirAll(dir, fileMode); err != nil {
 			return err
 		}
 	}
 
-	file, err := os.OpenFile(d.filename, os.O_RDWR|os.O_CREATE, fileMode)
+	file, err := os.OpenFile(d.Filename, os.O_RDWR|os.O_CREATE, fileMode)
 	if err != nil {
 		return err
 	}
@@ -69,17 +70,17 @@ func (d *Disk) WriteToFile(data []byte) error {
 // ReadFromFile
 func (d *Disk) ReadFromFile() ([]byte, error) {
 	data := make([]byte, 0)
-	if !FilenameExists(d.filename) {
+	if !FilenameExists(d.Filename) {
 		return data, nil
 	}
 
-	file, err := os.Open(d.filename)
+	file, err := os.Open(d.Filename)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	_, err = file.Read(data)
+	data, err = ioutil.ReadAll(file)
 	if err != nil {
 		return nil, err
 	}

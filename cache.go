@@ -7,9 +7,13 @@ type Cache interface {
 	Set(key string, value interface{}) error
 	SetWithExpire(key string, value interface{}, expire int64) error
 
-	//Keys() Keys
+	// prefix - 前缀查询，"" 查询所有， 只返回当前有效的key
+	Keys(prefix string) Keys
 
 	Delete(key string)
+
+	// 当前存储的数据量
+	Size() int64
 
 	// 删除所有 key
 	FlushAll() error
@@ -17,7 +21,7 @@ type Cache interface {
 	Close() error
 }
 
-//type Keys interface {
-//	Size() int64
-//	Value() []string
-//}
+type Keys interface {
+	Size() int64
+	Value() []string
+}

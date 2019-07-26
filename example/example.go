@@ -1,42 +1,32 @@
 package main
 
 import (
-	"fmt"
 	"log"
-	"os"
-	"time"
 
 	"github.com/huzhongqing/gocache"
 )
 
-var dir, _ = os.Getwd()
-var cfg = gocache.Config{
-	MaxSize:       1000,
-	CleanInterval: time.Millisecond * 500,
-	AutoSave:      true,
-	SaveType:      gocache.SaveAllKeysMode,
-	Filename:      dir + "/cache.back",
-}
+var cache gocache.Cache
 
 func main() {
-	cache, err := gocache.NewCache(cfg)
+	// 可以自定义配置 MemSyncMapCacheConfig{}
+	memc, err := gocache.NewMemSyncMapCache()
 	if err != nil {
-		log.Panic(err.Error())
+		log.Println("NewMemSyncMapCache", err)
+		return
+	}
+	cache = memc
+
+	cache.Set("Set", "1") // 如果capacity==-1， 则不用处理 error
+
+	v, ok := cache.Get("Set")
+	if ok {
+		log.Println("key: set, value: " + v.(string))
 	}
 
-	//如果设置了 容量，请处理 error
-	cache.Set("test", "1")
-	cache.SetExpire("testExpire", "2", time.Minute)
-
-	v, ok := cache.Get("test")
-	fmt.Println(v.(string), ok)
-
-	v, t, ok := cache.GetWithExpire("testExpire")
-	fmt.Println(v.(string), t.Seconds(), ok)
-
-	// 释放资源， 如果 autoSave 开启，则保存内存内容到文件， NewCache 自动加载
-	if err := cache.Close(); err != nil {
-		// 如果保存文件存在 error
-		log.Panic(err.Error())
+	err = cache.Close()
+	if err != nil {
+		log.Println("Close", err)
+		return
 	}
 }

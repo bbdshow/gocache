@@ -7,6 +7,3 @@ done
 for d in $(go list ./... | grep -E 'gocache$'); do
    go test -race -covermode=atomic -coverprofile=coverage.txt 
 done
-
-rm -rf ./store.cache
-rm -f ./gob.cache
