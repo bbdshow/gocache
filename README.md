@@ -20,17 +20,19 @@
 ## Notice 
 
 - 选择 sync.Map 的实现方式需要 golang 1.9^
-- v0.2.x 不兼容 v0.1.x  master 分支为最新版本
+- v0.2.x 不兼容 v0.1.x  master 分支为开发分支，最新版本
 
 ## FAQ
 
-### 为什么选择 sync.Map 
+### 选择 sync.Map 实现 
 
 利用 sync.map 达到读取性能相对更高，sync.Map 并不太适应大量写入的缓存操作, 且因为计数使用了 LoadOrStrore 对 key 计数。
-sync.Map 在空间上并不占优势。如果存在频繁写入建议使用 RwMutex map  github.com/patrickmn/go-cache
+sync.Map 在内存空间上并不占优势，约 rwMutex + map 的2倍。
 
-在 4 核 机器上 锁竞争不明显， 所以 RwMutex map 在性能上更占优势，但是当 cpu 核数 往上时， 锁竞争变大， sync.Map 的优势就体现出来了。
+在 4 核以内的机器上锁竞争不明显， 所以 RwMutex map 在性能上更占优势，但是当 cpu 核数 往上时， 锁竞争变大， sync.Map 的优势就体现出来了。
 性能测试 引用 https://medium.com/@deckarep/the-new-kid-in-town-gos-sync-map-de24a6bf7c2c
+
+### 选择 rwMutex + map 实现
 
 
 
