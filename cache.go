@@ -41,3 +41,5 @@ type Store interface {
 	Range(f func(k string, v interface{}) bool)
 	Flush()
 }
+
+// 把容量控制，实现在 Store 里面

@@ -320,7 +320,12 @@ func (mem *MemCacheImpl) overCapacity() error {
 		if c > 0 {
 			return nil
 		}
-		// 没有删除任何key
+	default:
+		// 回收一波已经过期的 key
+		c := mem.expireClean()
+		if c > 0 {
+			return nil
+		}
 	}
 
 	return ErrOverCapacity
@@ -329,6 +334,11 @@ func (mem *MemCacheImpl) overCapacity() error {
 // # -----------------------------------------------------
 
 func (mem *MemCacheImpl) randomDeleteOne() {
+	c := mem.expireClean()
+	if c > 0 {
+		return
+	}
+
 	mem.store.Range(func(k string, v interface{}) bool {
 		mem.deleteValue(k, true)
 		return false
@@ -411,6 +421,7 @@ func (mem *MemCacheImpl) WriteToDisk() error {
 	if err != nil {
 		return err
 	}
+
 	return mem.disk.WriteToFile(byt)
 }
 
