@@ -4,7 +4,7 @@
 [![codecov](https://codecov.io/gh/huzhongqing/gocache/branch/master/graph/badge.svg)](https://codecov.io/gh/huzhongqing/gocache)
 [![Go Report Card](https://goreportcard.com/badge/github.com/huzhongqing/gocache)](https://goreportcard.com/report/github.com/huzhongqing/gocache)
 
-> 一款简易的内存缓存实现，支持容量控制，TTL和数据落。
+> 一款简易的内存缓存实现，支持容量控制，TTL和数据落盘。
 
 ## 特性
 1. Cache 接口， 会采用 sync.Map 和 rwMutex + map 实现
