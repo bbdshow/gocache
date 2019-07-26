@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/huzhongqing/gocache"
 )
@@ -9,13 +10,20 @@ import (
 var cache gocache.Cache
 
 func main() {
-	// 可以自定义配置 MemSyncMapCacheConfig{}
-	memc, err := gocache.NewMemSyncMapCache()
+	store := gocache.NewSyncMap()
+	cacheImpl := gocache.NewMemCacheWithConfig(store, gocache.DefaultMemConfig())
+
+	// 如果存在大量 TTL key 建议
+	go cacheImpl.AutoCleanExpireKey(5 * time.Minute)
+
+	cache = cacheImpl
+
+	// 如果之前保存过文件，建议
+	err := cache.LoadFromDisk()
 	if err != nil {
-		log.Println("NewMemSyncMapCache", err)
+		log.Println("LoadFromDisk", err)
 		return
 	}
-	cache = memc
 
 	cache.Set("Set", "1") // 如果capacity==-1， 则不用处理 error
 
@@ -24,9 +32,12 @@ func main() {
 		log.Println("key: set, value: " + v.(string))
 	}
 
-	err = cache.Close()
+	// 退出时，可以选择落盘
+	err = cache.WriteToDisk()
 	if err != nil {
-		log.Println("Close", err)
+		log.Println("WriteToDisk", err)
 		return
 	}
+
+	cache.Close()
 }

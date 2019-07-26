@@ -16,12 +16,28 @@ type Cache interface {
 	Size() int64
 
 	// 删除所有 key
-	FlushAll() error
+	FlushAll()
 
-	Close() error
+	// 写入数据到磁盘
+	WriteToDisk() error
+
+	// 从磁盘加载数据
+	LoadFromDisk() error
+
+	Close()
 }
 
 type Keys interface {
 	Size() int64
 	Value() []string
+}
+
+type Store interface {
+	Load(key string) (value interface{}, ok bool)
+	Store(key string, value interface{})
+	Delete(key string)
+	LoadOrStore(key string, value interface{}) (actual interface{}, loaded bool)
+	Exists(key string) bool
+	Range(f func(k string, v interface{}) bool)
+	Flush()
 }

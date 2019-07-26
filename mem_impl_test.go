@@ -7,14 +7,10 @@ import (
 	"time"
 )
 
-func TestMemSyncMapCache_SetAndGet(t *testing.T) {
-	cache, err := NewMemSyncMapCache()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+func TestMemCacheImpl_SetAndGet(t *testing.T) {
+	cache := NewSyncMapCache()
 
-	err = cache.Set("set", "1")
+	err := cache.Set("set", "1")
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -32,14 +28,10 @@ func TestMemSyncMapCache_SetAndGet(t *testing.T) {
 	}
 }
 
-func TestMemSyncMapCache_SetAndGetExpire(t *testing.T) {
-	cache, err := NewMemSyncMapCache()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+func TestMemCacheImpl_SetAndGetExpire(t *testing.T) {
+	cache := NewSyncMapCache()
 
-	err = cache.SetWithExpire("set", "1", 15)
+	err := cache.SetWithExpire("set", "1", 15)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -65,14 +57,10 @@ func TestMemSyncMapCache_SetAndGetExpire(t *testing.T) {
 
 }
 
-func TestMemSyncMapCache_Delete(t *testing.T) {
-	cache, err := NewMemSyncMapCache()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+func TestMemCacheImpl_Delete(t *testing.T) {
+	cache := NewSyncMapCache()
 
-	err = cache.Set("set", "1")
+	err := cache.Set("set", "1")
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -87,12 +75,9 @@ func TestMemSyncMapCache_Delete(t *testing.T) {
 	}
 }
 
-func TestMemSyncMapCache_Keys(t *testing.T) {
-	cache, err := NewMemSyncMapCache()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+func TestMemCacheImpl_Keys(t *testing.T) {
+	cache := NewSyncMapCache()
+
 	for i := 0; i < 10; i++ {
 		if i%2 == 0 {
 			err := cache.Set(fmt.Sprintf("%d", i), i)
@@ -140,14 +125,10 @@ func TestMemSyncMapCache_Keys(t *testing.T) {
 	}
 }
 
-func TestMemSyncMapCache_FlushAll(t *testing.T) {
-	cache, err := NewMemSyncMapCache()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+func TestMemCacheImpl_FlushAll(t *testing.T) {
+	cache := NewSyncMapCache()
 
-	err = cache.Set("set", "1")
+	err := cache.Set("set", "1")
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -162,16 +143,12 @@ func TestMemSyncMapCache_FlushAll(t *testing.T) {
 	}
 }
 
-func TestMemSyncMapCache_Capacity(t *testing.T) {
-	config := MemSyncMapCacheConfig{
+func TestMemCacheImpl_Capacity(t *testing.T) {
+	config := MemCacheConfig{
 		Capacity:                5,
 		OverCapacityProcessMode: ErrProcessMode,
 	}
-	cache, err := NewMemSyncMapCacheWithConfig(config)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+	cache := NewSyncMapCacheWithConfig(config)
 
 	for i := 0; i < 6; i++ {
 		err := cache.Set(fmt.Sprintf("%d", i), i)
@@ -186,15 +163,9 @@ func TestMemSyncMapCache_Capacity(t *testing.T) {
 		}
 	}
 	// #----- RandomCleanProcessMode
-	config = MemSyncMapCacheConfig{
-		Capacity:                5,
-		OverCapacityProcessMode: RandomCleanProcessMode,
-	}
-	cache1, err := NewMemSyncMapCacheWithConfig(config)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+	config.OverCapacityProcessMode = RandomCleanProcessMode
+
+	cache1 := NewSyncMapCacheWithConfig(config)
 
 	for i := 0; i < 10; i++ {
 		err := cache1.Set(fmt.Sprintf("%d", i), i)
@@ -213,15 +184,8 @@ func TestMemSyncMapCache_Capacity(t *testing.T) {
 
 	// #-----
 
-	config = MemSyncMapCacheConfig{
-		Capacity:                5,
-		OverCapacityProcessMode: ExpireKeyRandomCleanProcessMode,
-	}
-	cache2, err := NewMemSyncMapCacheWithConfig(config)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+	config.OverCapacityProcessMode = ExpireKeyRandomCleanProcessMode
+	cache2 := NewSyncMapCacheWithConfig(config)
 
 	for i := 0; i < 10; i++ {
 		if i < 6 {
@@ -252,16 +216,12 @@ func TestMemSyncMapCache_Capacity(t *testing.T) {
 	}
 }
 
-func TestMemSyncMapCache_AutoCleanExpireKey(t *testing.T) {
-	cache, err := NewMemSyncMapCache()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
+func TestMemCacheImpl_AutoCleanExpireKey(t *testing.T) {
+	cache := NewSyncMapCache()
 
 	go cache.AutoCleanExpireKey(10 * time.Millisecond)
 
-	err = cache.Set("set", "1")
+	err := cache.Set("set", "1")
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -289,44 +249,37 @@ func TestMemSyncMapCache_AutoCleanExpireKey(t *testing.T) {
 
 }
 
-func TestMemSyncMapCache_SaveAndLoad(t *testing.T) {
-	config := MemSyncMapCacheConfig{
-		Capacity:                10,
-		OverCapacityProcessMode: ErrProcessMode,
-		WriteDisk:               true,
-		Filename:                "", //当前目录
-	}
-	cache, err := NewMemSyncMapCacheWithConfig(config)
+func TestMemCacheImpl_SaveAndLoad(t *testing.T) {
+	cache := NewSyncMapCache()
+	err := cache.Set("Set", "1")
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	err = cache.Set("Set", "1")
+	err = cache.SetWithExpire("SetWithExpire", "2", 5)
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	err = cache.SetWithExpire("SetWithExpire", "2", 10)
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
-
-	err = cache.Close()
-	if err != nil {
-		t.Fatal(err)
-		return
-	}
 	time.Sleep(10 * time.Millisecond)
-	// 会去自动加载保存的数据
-	cache1, err := NewMemSyncMapCacheWithConfig(config)
+
+	err = cache.WriteToDisk()
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
-	v, ok := cache1.Get("Set")
+
+	cache.Delete("Set")
+
+	// 加载保存的数据
+	err = cache.LoadFromDisk()
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+	v, ok := cache.Get("Set")
 	if !ok {
 		t.Fatal("write disk error")
 		return
@@ -337,14 +290,14 @@ func TestMemSyncMapCache_SaveAndLoad(t *testing.T) {
 		return
 	}
 
-	v, ok = cache1.Get("SetWithExpire")
+	v, ok = cache.Get("SetWithExpire")
 	if ok {
 		t.Fatal("SetWithExpire should not exists")
 		return
 	}
 
 	// 删除文件
-	err = os.Remove(cache1.disk.Filename)
+	err = os.Remove(cache.disk.Filename)
 	if err != nil {
 		t.Fatal("remove file ", err.Error())
 		return
