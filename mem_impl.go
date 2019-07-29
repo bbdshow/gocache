@@ -371,14 +371,14 @@ func (mem *MemCacheImpl) randomDeleteExpireKey() int {
 // go AutoCleanExpireKey(5 * time.Minute)
 func (mem *MemCacheImpl) AutoCleanExpireKey(interval time.Duration) {
 	mem.once.Do(func() {
-		timer := time.NewTimer(interval)
+		ticker := time.NewTicker(interval)
 		for {
 			if mem.isClosed() {
-				timer.Stop()
+				ticker.Stop()
 				return
 			}
 			select {
-			case <-timer.C:
+			case <-ticker.C:
 				mem.expireClean()
 			}
 		}
