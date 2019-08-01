@@ -2,7 +2,6 @@ package gocache
 
 import (
 	"fmt"
-	"os"
 	"testing"
 	"time"
 )
@@ -249,9 +248,18 @@ func TestMemCacheImpl_AutoCleanExpireKey(t *testing.T) {
 
 }
 
+type iType struct {
+	Value string
+}
+
+type iiType struct {
+	Number int
+}
+
 func TestMemCacheImpl_SaveAndLoad(t *testing.T) {
+	value := iType{Value: "1"}
 	cache := NewSyncMapCache()
-	err := cache.Set("Set", "1")
+	err := cache.Set("Set", value)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -262,7 +270,8 @@ func TestMemCacheImpl_SaveAndLoad(t *testing.T) {
 		t.Fatal(err)
 		return
 	}
-
+	cache.GobRegisterCustomType(iType{})
+	cache.GobRegisterCustomType(iiType{})
 	time.Sleep(10 * time.Millisecond)
 
 	err = cache.WriteToDisk()
@@ -285,7 +294,7 @@ func TestMemCacheImpl_SaveAndLoad(t *testing.T) {
 		return
 	}
 
-	if v.(string) != "1" {
+	if v.(iType).Value != "1" {
 		t.Fatal("write disk value not equal")
 		return
 	}
@@ -297,9 +306,9 @@ func TestMemCacheImpl_SaveAndLoad(t *testing.T) {
 	}
 
 	// 删除文件
-	err = os.Remove(cache.disk.Filename)
-	if err != nil {
-		t.Fatal("remove file ", err.Error())
-		return
-	}
+	//err = os.Remove(cache.disk.Filename)
+	//if err != nil {
+	//	t.Fatal("remove file ", err.Error())
+	//	return
+	//}
 }

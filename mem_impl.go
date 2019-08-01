@@ -1,7 +1,8 @@
 package gocache
 
 import (
-	"encoding/json"
+	"bytes"
+	"encoding/gob"
 	"errors"
 	"strings"
 	"sync"
@@ -397,25 +398,33 @@ func (mem *MemCacheImpl) expireClean() int {
 	return len(keys)
 }
 
+func (mem *MemCacheImpl) GobRegisterCustomType(v interface{}) {
+	gob.Register(v)
+}
+
 func (mem *MemCacheImpl) WriteToDisk() error {
-	datas := make(map[string]expireValue, mem.currentCapacity)
+	input := bytes.Buffer{}
+	enc := gob.NewEncoder(&input)
+
+	values := make(map[string]expireValue, mem.currentCapacity)
 	mem.store.Range(func(k string, v interface{}) bool {
-		data := v.(expireValue)
-		if !data.isExpire() {
-			datas[k] = data
+		value := v.(expireValue)
+		if !value.isExpire() {
+			values[k] = value
 		}
 		return true
 	})
 
-	byt, err := json.Marshal(datas)
+	err := enc.Encode(values)
 	if err != nil {
 		return err
 	}
-	return mem.disk.WriteToFile(byt)
+
+	return mem.disk.WriteToFile(input.Bytes())
 }
 
 func (mem *MemCacheImpl) LoadFromDisk() error {
-	datas := make(map[string]expireValue, 0)
+	values := make(map[string]expireValue, 0)
 
 	byt, err := mem.disk.ReadFromFile()
 	if err != nil {
@@ -426,15 +435,18 @@ func (mem *MemCacheImpl) LoadFromDisk() error {
 		return nil
 	}
 
-	err = json.Unmarshal(byt, &datas)
+	out := bytes.Buffer{}
+	out.Write(byt)
+	dec := gob.NewDecoder(&out)
+	err = dec.Decode(&values)
 	if err != nil {
 		return err
 	}
 
-	for k, expireValue := range datas {
-		if !expireValue.isExpire() {
+	for k, v := range values {
+		if !v.isExpire() {
 			// 没有过期再写入
-			mem.setValue(k, expireValue.Value, expireValue.validExpire())
+			mem.setValue(k, v.Value, v.validExpire())
 		}
 	}
 
