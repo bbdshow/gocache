@@ -2,15 +2,16 @@ package gocache
 
 import "sync"
 
+// SyncMap 并发Map 当数据竞争大时，多核CPU时，使用比RwMap性能好，缺点空间占用会多点
 type SyncMap struct {
 	store sync.Map
 }
 
 func NewSyncMap() *SyncMap {
-	sm := SyncMap{
+	s := SyncMap{
 		store: sync.Map{},
 	}
-	return &sm
+	return &s
 }
 
 func (s *SyncMap) Load(key string) (value interface{}, ok bool) {
@@ -45,19 +46,18 @@ func (s *SyncMap) Flush() {
 	s.store = sync.Map{}
 }
 
-// -------
-
+// RWMap 读写Map 当数据竞争不强，或读取多时。使用节省空间更快
 type RWMap struct {
 	rwMutex sync.RWMutex
 	store   map[string]interface{}
 }
 
 func NewRWMap() *RWMap {
-	rw := RWMap{
+	s := RWMap{
 		rwMutex: sync.RWMutex{},
 		store:   make(map[string]interface{}),
 	}
-	return &rw
+	return &s
 }
 
 func (s *RWMap) Load(key string) (value interface{}, ok bool) {

@@ -24,9 +24,6 @@ type Cache interface {
 	// 从磁盘加载数据
 	LoadFromDisk() error
 
-	// 如果value是自定义结构体，当使用 WriteToDisk LoadFromDisk 需要使用 gob 注册自定义结构体
-	GobRegisterCustomType(v interface{})
-
 	Close()
 }
 
