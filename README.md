@@ -1,8 +1,8 @@
 # gocache
 
-[![Build Status](https://travis-ci.org/huzhongqing/gocache.svg?branch=master)](https://travis-ci.org/huzhongqing/gocache)
-[![codecov](https://codecov.io/gh/huzhongqing/gocache/branch/master/graph/badge.svg)](https://codecov.io/gh/huzhongqing/gocache)
-[![Go Report Card](https://goreportcard.com/badge/github.com/huzhongqing/gocache)](https://goreportcard.com/report/github.com/huzhongqing/gocache)
+[![Build Status](https://travis-ci.org/bbdshow/gocache.svg?branch=master)](https://travis-ci.org/bbdshow/gocache)
+[![codecov](https://codecov.io/gh/bbdshow/gocache/branch/master/graph/badge.svg)](https://codecov.io/gh/bbdshow/gocache)
+[![Go Report Card](https://goreportcard.com/badge/github.com/bbdshow/gocache)](https://goreportcard.com/report/github.com/bbdshow/gocache)
 
 > 一款简易的内存缓存实现，支持容量控制，TTL和数据落盘。
 

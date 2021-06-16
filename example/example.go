@@ -4,7 +4,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/huzhongqing/gocache"
+	"github.com/bbdshow/gocache"
 )
 
 var cache gocache.Cache

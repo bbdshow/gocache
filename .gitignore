@@ -12,6 +12,6 @@
 *.out
 
 *.back
-
+.idea
 test/
 coverage.txt
