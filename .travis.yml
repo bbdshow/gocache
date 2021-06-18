@@ -5,6 +5,7 @@ sudo: false
 go:
   - 1.9.x
   - 1.10.x
+  - 1.15.x
 
 notifications:
   email: false
