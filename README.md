@@ -57,8 +57,8 @@ type Store interface {
 
 ## Notice 
 
-- 选择 sync.Map 的实现方式需要 golang 1.9^
-- v0.2.x 不兼容 v0.1.x  master 分支为开发分支，最新版本
+- 选择 sync.Map 的实现方式需要 golang 1.11^
+- master 分支为开发分支，最新版本
 
 ## FAQ
 

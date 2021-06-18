@@ -29,10 +29,11 @@ func (s *SyncMap) Store(key string, value interface{}) {
 }
 
 func (s *SyncMap) Delete(key string) {
-	_, loaded := s.store.LoadAndDelete(key)
+	_, loaded := s.store.Load(key)
 	if loaded {
 		atomic.AddInt64(&s.size, -1)
 	}
+	s.store.Delete(key)
 }
 
 func (s *SyncMap) LoadOrStore(key string, value interface{}) (actual interface{}, loaded bool) {
