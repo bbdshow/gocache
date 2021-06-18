@@ -1,6 +1,6 @@
 # gocache
 
-[![Build Status](https://travis-ci.org/bbdshow/gocache.svg?branch=master)](https://travis-ci.org/bbdshow/gocache)
+[![Build Status](https://www.travis-ci.com/bbdshow/gocache.svg?branch=master)](https://travis-ci.org/bbdshow/gocache)
 [![codecov](https://codecov.io/gh/bbdshow/gocache/branch/master/graph/badge.svg)](https://codecov.io/gh/bbdshow/gocache)
 [![Go Report Card](https://goreportcard.com/badge/github.com/bbdshow/gocache)](https://goreportcard.com/report/github.com/bbdshow/gocache)
 

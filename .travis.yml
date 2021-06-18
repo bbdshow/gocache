@@ -10,8 +10,6 @@ go:
 notifications:
   email: false
 
-before_install:
-  - chmod 666 /home/travis/gopath/src/github.com/bbdshow/gocache/test/cache.gob
 install:
   - go get github.com/bbdshow/gocache
 script:
