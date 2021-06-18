@@ -1,10 +1,15 @@
 package gocache
 
-import "sync"
+import (
+	"sync"
+	"sync/atomic"
+)
 
 // SyncMap 并发Map 当数据竞争大时，多核CPU时，使用比RwMap性能好，缺点空间占用会多点
 type SyncMap struct {
 	store sync.Map
+	// about the value, Store func, I don't know if it exists
+	size int64
 }
 
 func NewSyncMap() *SyncMap {
@@ -24,11 +29,18 @@ func (s *SyncMap) Store(key string, value interface{}) {
 }
 
 func (s *SyncMap) Delete(key string) {
-	s.store.Delete(key)
+	_, loaded := s.store.LoadAndDelete(key)
+	if loaded {
+		atomic.AddInt64(&s.size, -1)
+	}
 }
 
 func (s *SyncMap) LoadOrStore(key string, value interface{}) (actual interface{}, loaded bool) {
-	return s.store.LoadOrStore(key, value)
+	v, loaded := s.store.LoadOrStore(key, value)
+	if !loaded {
+		atomic.AddInt64(&s.size, 1)
+	}
+	return v, loaded
 }
 
 func (s *SyncMap) Exists(key string) bool {
@@ -36,14 +48,23 @@ func (s *SyncMap) Exists(key string) bool {
 	return ok
 }
 
-func (s *SyncMap) Range(f func(k string, v interface{}) bool) {
+func (s *SyncMap) Range(fn func(k string, v interface{}) bool) {
 	s.store.Range(func(key, value interface{}) bool {
-		return f(key.(string), value)
+		return fn(key.(string), value)
 	})
 }
 
 func (s *SyncMap) Flush() {
 	s.store = sync.Map{}
+	atomic.StoreInt64(&s.size, 0)
+}
+
+func (s *SyncMap) Size() int64 {
+	size := atomic.LoadInt64(&s.size)
+	if size < 0 {
+		return 0
+	}
+	return size
 }
 
 // RWMap 读写Map 当数据竞争不强，或读取多时。使用节省空间更快
@@ -119,4 +140,11 @@ func (s *RWMap) Flush() {
 	s.rwMutex.Lock()
 	s.store = make(map[string]interface{})
 	s.rwMutex.Unlock()
+}
+
+func (s *RWMap) Size() int64 {
+	s.rwMutex.Lock()
+	size := len(s.store)
+	s.rwMutex.Unlock()
+	return int64(size)
 }

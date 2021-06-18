@@ -5,7 +5,8 @@ type Cache interface {
 	GetWithExpire(key string) (value interface{}, expire int64, exists bool)
 
 	Set(key string, value interface{}) error
-	SetWithExpire(key string, value interface{}, expire int64) error
+	// ttl 秒级别
+	SetWithExpire(key string, value interface{}, ttl int64) error
 
 	// prefix - 前缀查询，"" 查询所有， 只返回当前有效的key
 	Keys(prefix string) Keys
@@ -18,7 +19,9 @@ type Cache interface {
 	// 删除所有 key
 	FlushAll()
 
-	// 写入数据到磁盘
+	GobRegister(v ...interface{})
+
+	// 写入数据到磁盘， 如果存在自定义结构类型，在使用时 一定要先注册结构
 	WriteToDisk() error
 
 	// 从磁盘加载数据
@@ -39,5 +42,6 @@ type Store interface {
 	LoadOrStore(key string, value interface{}) (actual interface{}, loaded bool)
 	Exists(key string) bool
 	Range(f func(k string, v interface{}) bool)
+	Size() int64
 	Flush()
 }

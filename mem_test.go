@@ -30,30 +30,29 @@ func TestMemCacheImpl_SetAndGet(t *testing.T) {
 func TestMemCacheImpl_SetAndGetExpire(t *testing.T) {
 	cache := NewSyncMapCache()
 
-	err := cache.SetWithExpire("set", "1", 15)
+	err := cache.SetWithExpire("set", "1", 3)
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	_, e, ok := cache.GetWithExpire("set")
+	_, ttl, ok := cache.GetWithExpire("set")
 	if !ok {
 		t.Fatal("not exists")
 		return
 	}
 
-	if e < 10 {
-		t.Fatal("expire error", e)
+	if ttl < 2 {
+		t.Fatal("expire error", ttl)
 		return
 	}
 
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(3 * time.Second)
 
 	_, ok = cache.Get("set")
 	if ok {
 		t.Fatal("key should expired")
 	}
-
 }
 
 func TestMemCacheImpl_Delete(t *testing.T) {
@@ -85,7 +84,7 @@ func TestMemCacheImpl_Keys(t *testing.T) {
 				return
 			}
 		} else {
-			err := cache.SetWithExpire(fmt.Sprintf("Expire-%d", i), i, 20)
+			err := cache.SetWithExpire(fmt.Sprintf("Expire-%d", i), i, 1)
 			if err != nil {
 				t.Fatal("ExpireKeyRandomCleanProcessMode error")
 				return
@@ -107,7 +106,7 @@ func TestMemCacheImpl_Keys(t *testing.T) {
 		}
 	}
 	// 删除掉过期的key
-	time.Sleep(30 * time.Millisecond)
+	time.Sleep(3 * time.Second)
 
 	keys = cache.Keys("")
 	if keys.Size() != 5 {
@@ -143,9 +142,8 @@ func TestMemCacheImpl_FlushAll(t *testing.T) {
 }
 
 func TestMemCacheImpl_Capacity(t *testing.T) {
-	config := MemCacheConfig{
-		Capacity:                5,
-		OverCapacityProcessMode: ErrProcessMode,
+	config := Config{
+		LimitSize: 5,
 	}
 	cache := NewSyncMapCacheWithConfig(config)
 
@@ -155,60 +153,8 @@ func TestMemCacheImpl_Capacity(t *testing.T) {
 			t.Fatal("0-4 error")
 			return
 		} else if err != nil && i == 5 {
-			if err != ErrOverCapacity {
+			if err != ErrKeysOverLimitSize {
 				t.Fatal("over capacity ", err.Error())
-				return
-			}
-		}
-	}
-	// #----- RandomCleanProcessMode
-	config.OverCapacityProcessMode = RandomCleanProcessMode
-
-	cache1 := NewSyncMapCacheWithConfig(config)
-
-	for i := 0; i < 10; i++ {
-		err := cache1.Set(fmt.Sprintf("%d", i), i)
-		if err != nil {
-			t.Fatal(err)
-			return
-		}
-		if i > 5 {
-			size := cache1.Size()
-			if size != 5 {
-				t.Fatal("size error", size)
-				return
-			}
-		}
-	}
-
-	// #-----
-
-	config.OverCapacityProcessMode = ExpireKeyRandomCleanProcessMode
-	cache2 := NewSyncMapCacheWithConfig(config)
-
-	for i := 0; i < 10; i++ {
-		if i < 6 {
-			err := cache2.Set(fmt.Sprintf("%d", i), i)
-			if i == 5 && err == nil {
-				t.Fatal("should capacity error")
-				return
-			}
-		}
-	}
-
-	cache2.FlushAll()
-
-	for i := 1; i <= 10; i++ {
-		if i%2 == 0 {
-			err := cache2.Set(fmt.Sprintf("%d", i), i)
-			if err != nil {
-				t.Fatal("ExpireKeyRandomCleanProcessMode error")
-				return
-			}
-		} else {
-			err := cache2.SetWithExpire(fmt.Sprintf("SetWithExpire-%d", i), i, 20)
-			if err != nil {
-				t.Fatal("ExpireKeyRandomCleanProcessMode error")
 				return
 			}
 		}
@@ -218,7 +164,7 @@ func TestMemCacheImpl_Capacity(t *testing.T) {
 func TestMemCacheImpl_AutoCleanExpireKey(t *testing.T) {
 	cache := NewSyncMapCache()
 
-	go cache.AutoCleanExpireKey(10 * time.Millisecond)
+	cache.AutoCleanExpireKey(10 * time.Millisecond)
 
 	err := cache.Set("set", "1")
 	if err != nil {
@@ -226,7 +172,7 @@ func TestMemCacheImpl_AutoCleanExpireKey(t *testing.T) {
 		return
 	}
 
-	err = cache.SetWithExpire("SetWithExpire", "2", 10)
+	err = cache.SetWithExpire("SetWithExpire", "2", 2)
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -238,7 +184,7 @@ func TestMemCacheImpl_AutoCleanExpireKey(t *testing.T) {
 		return
 	}
 
-	time.Sleep(50 * time.Millisecond)
+	time.Sleep(3 * time.Second)
 
 	size = cache.Size()
 	if size != 1 {
@@ -258,21 +204,32 @@ type iiType struct {
 
 func TestMemCacheImpl_SaveAndLoad(t *testing.T) {
 	value := iType{Value: "1"}
-	cache := NewSyncMapCache()
+	cache := NewSyncMapCacheWithConfig(Config{
+		LimitSize: -1,
+		Filename:  "./test/cache.gob",
+	})
+
+	cache.GobRegister(iType{}, &iiType{})
+
 	err := cache.Set("Set", value)
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
 
-	err = cache.SetWithExpire("SetWithExpire", "2", 5)
+	err = cache.SetWithExpire("SetWithExpire", "2", 1)
 	if err != nil {
 		t.Fatal(err)
 		return
 	}
-	cache.GobRegisterCustomType(iType{})
-	cache.GobRegisterCustomType(iiType{})
-	time.Sleep(10 * time.Millisecond)
+	value1 := &iiType{Number: 2}
+	err = cache.Set("Set1", value1)
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	time.Sleep(2 * time.Second)
 
 	err = cache.WriteToDisk()
 	if err != nil {
@@ -281,6 +238,12 @@ func TestMemCacheImpl_SaveAndLoad(t *testing.T) {
 	}
 
 	cache.Delete("Set")
+	cache.Delete("Set1")
+
+	_, ok := cache.Get("Set1")
+	if ok {
+		t.Fatal("Set1 should delete")
+	}
 
 	// 加载保存的数据
 	err = cache.LoadFromDisk()
@@ -296,6 +259,17 @@ func TestMemCacheImpl_SaveAndLoad(t *testing.T) {
 
 	if v.(iType).Value != "1" {
 		t.Fatal("write disk value not equal")
+		return
+	}
+
+	v1, ok := cache.Get("Set1")
+	if !ok {
+		t.Fatal("write disk error")
+		return
+	}
+
+	if v1.(*iiType).Number != 2 {
+		t.Fatal("write disk iiType value not equal")
 		return
 	}
 

@@ -4,9 +4,9 @@ import (
 	"bytes"
 	"encoding/gob"
 	"errors"
+	"log"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 )
 
@@ -16,113 +16,93 @@ import (
 Notice:
 	1. 使用 sync.Map 实现，最大限度优化读的性能，特别是在 cpu > 4核的情况下，因为没有锁的竞争，读取优势很明显
 	但是内存消耗严重(约等于2倍)，空间换时间。而且写入性能没有 rwMutex map 性能好
+	2. 当存在大量的 TTLKey 时，不建议总缓存Key超过百万，在清理TTLKey时会占用锁，会有一定的写入延迟
+	3. 不建议缓存内容过大时，执行写入磁盘操作，写入时会进行编码，会申请内容的一倍内存，如果内存不够，会导致OOM
 */
 
-const (
-	ErrProcessMode int = iota
-	RandomCleanProcessMode
-	ExpireKeyRandomCleanProcessMode
-
-	defaultCapacity                = int64(-1)
-	defaultOverCapacityProcessMode = ErrProcessMode
-)
-
 var (
-	ErrOverCapacity = errors.New("over capacity")
+	ErrKeysOverLimitSize = errors.New("keys over limit size")
 )
 
-type MemCacheConfig struct {
-
+type Config struct {
 	// 缓存容量， -1 - 不限制
-	Capacity int64
-	// 超出缓存容量，处理方式
-	OverCapacityProcessMode int
-
+	LimitSize int64
 	// 保存文件位置, 不设置，默认当前执行路径
 	Filename string
 }
 
-func NewRWMapCache() *MemCacheImpl {
+func NewRWMapCache() *MemCache {
 	return NewMemCache(NewRWMap())
 }
 
-func NewRWMapCacheWithConfig(config MemCacheConfig) *MemCacheImpl {
+func NewRWMapCacheWithConfig(config Config) *MemCache {
 	return NewMemCacheWithConfig(NewRWMap(), config)
 }
 
-func NewSyncMapCache() *MemCacheImpl {
+func NewSyncMapCache() *MemCache {
 	return NewMemCache(NewSyncMap())
 }
 
-func NewSyncMapCacheWithConfig(config MemCacheConfig) *MemCacheImpl {
+func NewSyncMapCacheWithConfig(config Config) *MemCache {
 	return NewMemCacheWithConfig(NewSyncMap(), config)
 }
 
-func NewMemCache(store Store) *MemCacheImpl {
-	return NewMemCacheWithConfig(store, DefaultMemConfig())
+func NewMemCache(store Store) *MemCache {
+	return NewMemCacheWithConfig(store, Config{
+		LimitSize: -1,
+	})
 }
 
-func NewMemCacheWithConfig(store Store, config MemCacheConfig) *MemCacheImpl {
-	if config.OverCapacityProcessMode <= -1 {
-		config.OverCapacityProcessMode = -1
-	}
+func NewMemCacheWithConfig(store Store, config Config) *MemCache {
+	mem := MemCache{
+		limitSize: config.LimitSize,
 
-	mem := MemCacheImpl{
-		config:          &config,
-		store:           store,
-		currentCapacity: 0,
-		disk:            NewDisk(config.Filename),
-		closed:          0,
+		store: store,
+
+		disk: NewDisk(config.Filename),
+
+		exit: make(chan int, 1),
 	}
 
 	return &mem
 }
 
-func DefaultMemConfig() MemCacheConfig {
-	return MemCacheConfig{
-		Capacity:                defaultCapacity,
-		OverCapacityProcessMode: defaultOverCapacityProcessMode,
-	}
-}
-
 /*
-	MemCacheImpl
+	MemCache
 */
-type MemCacheImpl struct {
-	config *MemCacheConfig
+type MemCache struct {
+	// Key  limit cap, default -1 not limit
+	limitSize int64
 
 	// 存储所有数据 key , value - expireValue
 	store Store
 
-	// 当前存储容量
-	currentCapacity int64
-
 	// 写入磁盘
 	disk *Disk
 
-	once   sync.Once
-	closed int32
+	once sync.Once
+
+	exit chan int
 }
 
 type expireValue struct {
 	Value  interface{}
-	Expire int64 // 纳秒级别
+	Expire int64 // expire time /sec  -1 never expire
 }
 
-func (ev *expireValue) expire(expire int64) {
-	if expire <= -1 {
+func (ev *expireValue) ttl(ttl int64) {
+	if ttl <= -1 {
 		ev.Expire = -1
 		return
 	}
-
-	ev.Expire = time.Now().Add(time.Duration(expire) * time.Millisecond).UnixNano()
+	ev.Expire = time.Now().Unix() + ttl
 }
 
-func (ev expireValue) validExpire() int64 {
+func (ev expireValue) surplusSec(nowSec int64) int64 {
 	if ev.Expire == -1 {
 		return ev.Expire
 	}
-	expire := time.Unix(0, ev.Expire).Sub(time.Now()).Nanoseconds() / time.Millisecond.Nanoseconds()
+	expire := ev.Expire - nowSec
 	// 存在这种可能
 	if expire < 0 {
 		expire = 0
@@ -132,23 +112,23 @@ func (ev expireValue) validExpire() int64 {
 }
 
 // true - expired
-func (ev expireValue) isExpire() bool {
+// nowSec Avoid frequent timing
+func (ev expireValue) isExpire(nowSec int64) bool {
 	if ev.Expire == -1 {
 		return false
 	}
-	return time.Now().UnixNano() >= ev.Expire
+	return nowSec >= ev.Expire
 }
 
-func (mem *MemCacheImpl) Get(key string) (value interface{}, ok bool) {
-	value, _, ok = mem.GetWithExpire(key)
-	return value, ok
-}
-
-func (mem *MemCacheImpl) GetWithExpire(key string) (value interface{}, expire int64, ok bool) {
-	if mem.isClosed() {
-		return
+func (mem *MemCache) Get(key string) (value interface{}, ok bool) {
+	v, ok := mem.getValue(key)
+	if !ok {
+		return nil, ok
 	}
+	return v.Value, ok
+}
 
+func (mem *MemCache) GetWithExpire(key string) (value interface{}, ttl int64, ok bool) {
 	v, ok := mem.getValue(key)
 	if !ok {
 		return nil, 0, ok
@@ -158,295 +138,202 @@ func (mem *MemCacheImpl) GetWithExpire(key string) (value interface{}, expire in
 		return v.Value, v.Expire, ok
 	}
 
-	return v.Value, v.validExpire(), ok
+	return v.Value, v.surplusSec(time.Now().Unix()), ok
 }
 
-func (mem *MemCacheImpl) Set(key string, value interface{}) error {
+func (mem *MemCache) Set(key string, value interface{}) error {
 	return mem.SetWithExpire(key, value, -1)
 }
 
-// SetWithExpire  expire - 过期时间毫秒级别， -1 永久有效
-func (mem *MemCacheImpl) SetWithExpire(key string, value interface{}, expire int64) error {
-	if mem.isClosed() {
-		return nil
+// SetWithExpire  ttl - 过期时间秒级别， -1 永久有效
+func (mem *MemCache) SetWithExpire(key string, value interface{}, ttl int64) error {
+
+	if mem.limitSize >= 0 {
+		if mem.Size() >= mem.limitSize {
+			return ErrKeysOverLimitSize
+		}
 	}
 
-	err := mem.overCapacity()
-	if err != nil {
-		return err
-	}
-
-	mem.setValue(key, value, expire)
+	mem.setValue(key, value, ttl)
 
 	return nil
 }
 
-func (mem *MemCacheImpl) Delete(key string) {
-	if mem.isClosed() {
-		return
-	}
-
-	ok := mem.store.Exists(key)
-	if !ok {
-		return
-	}
-
-	mem.deleteValue(key, true)
+func (mem *MemCache) Delete(key string) {
+	mem.store.Delete(key)
 }
 
-type ikeys struct {
+type iKeys struct {
 	keys   []string
 	length int64
 }
 
-func (k *ikeys) Size() int64 {
+func (k *iKeys) Size() int64 {
 	return k.length
 }
 
-func (k *ikeys) Value() []string {
+func (k *iKeys) Value() []string {
 	return k.keys
 }
 
-func (mem *MemCacheImpl) Keys(prefix string) Keys {
-	keys := ikeys{
-		keys: make([]string, 0, mem.currentCapacity),
+func (mem *MemCache) Keys(prefix string) Keys {
+	keys := iKeys{
+		keys: make([]string, 0, mem.store.Size()),
 	}
-	if prefix == "" {
-		mem.store.Range(func(k string, v interface{}) bool {
-			if !v.(expireValue).isExpire() {
-				keys.keys = append(keys.keys, k)
-				keys.length++
+	nowSec := time.Now().Unix()
+	mem.store.Range(func(k string, v interface{}) bool {
+		if !v.(expireValue).isExpire(nowSec) {
+			if len(prefix) != 0 && !strings.HasPrefix(k, prefix) {
+				return true
 			}
-			return true
-		})
-	} else {
-		mem.store.Range(func(k string, v interface{}) bool {
-			if strings.HasPrefix(k, prefix) {
-				if !v.(expireValue).isExpire() {
-					keys.keys = append(keys.keys, k)
-					keys.length++
-				}
-			}
-			return true
-		})
-	}
-
+			keys.keys = append(keys.keys, k)
+			keys.length++
+		}
+		return true
+	})
 	return &keys
 }
 
-func (mem *MemCacheImpl) Size() int64 {
-	return atomic.LoadInt64(&mem.currentCapacity)
+// Size
+func (mem *MemCache) Size() int64 {
+	return mem.store.Size()
 }
 
-// FlushAll 清空所有数据，先关闭所有查询/写入
-func (mem *MemCacheImpl) FlushAll() {
-	atomic.StoreInt32(&mem.closed, 1)
-
+// FlushAll 清空所有数据
+func (mem *MemCache) FlushAll() {
 	mem.store.Flush()
-
-	mem.currentCapacity = 0
-	atomic.StoreInt32(&mem.closed, 0)
 }
 
-// Close 开启写入磁盘，则写入文件
-func (mem *MemCacheImpl) Close() {
-	atomic.StoreInt32(&mem.closed, 1)
+// Close
+func (mem *MemCache) Close() { mem.exit <- 1 }
 
-	mem.store = nil
-}
-
-func (mem *MemCacheImpl) getValue(key string) (expireValue, bool) {
+func (mem *MemCache) getValue(key string) (expireValue, bool) {
 	v, ok := mem.store.Load(key)
 	if !ok {
 		return expireValue{}, ok
 	}
 
 	ev := v.(expireValue)
-	if ev.isExpire() {
-		mem.deleteValue(key, true)
+	if ev.isExpire(time.Now().Unix()) {
+		mem.store.Delete(key)
 		return expireValue{}, false
 	}
 
 	return ev, true
 }
 
-func (mem *MemCacheImpl) setValue(key string, value interface{}, expire int64) {
-	if expire == 0 {
+func (mem *MemCache) setValue(key string, value interface{}, ttl int64) {
+	if ttl == 0 {
 		return
 	}
-
 	ev := expireValue{
 		Value: value,
 	}
-	ev.expire(expire)
+	ev.ttl(ttl)
 
 	// LoadOrStore 为了准确计数当前容量
-	_, exists := mem.store.LoadOrStore(key, ev)
-	if !exists {
-		atomic.AddInt64(&mem.currentCapacity, 1)
-	}
+	mem.store.LoadOrStore(key, ev)
 }
 
-func (mem *MemCacheImpl) deleteValue(key string, sub bool) {
-	mem.store.Delete(key)
-	if sub {
-		atomic.AddInt64(&mem.currentCapacity, -1)
-	}
-}
-
-func (mem *MemCacheImpl) isClosed() bool {
-	closed := atomic.LoadInt32(&mem.closed)
-	if closed == 1 {
-		return true
-	}
-	return false
-}
-
-func (mem *MemCacheImpl) overCapacity() error {
-	if mem.config.Capacity == -1 {
-		return nil
-	}
-	// 开区间，保持 mem.config.Capacity 容量
-	if atomic.LoadInt64(&mem.currentCapacity) < mem.config.Capacity {
-		return nil
-	}
-
-	// 超出容量
-	switch mem.config.OverCapacityProcessMode {
-	case RandomCleanProcessMode:
-		mem.randomDeleteOne()
-		return nil
-	case ExpireKeyRandomCleanProcessMode:
-		c := mem.randomDeleteExpireKey()
-		if c > 0 {
-			return nil
-		}
-		// 没有删除任何key
-	}
-
-	return ErrOverCapacity
-}
-
-// # -----------------------------------------------------
-
-func (mem *MemCacheImpl) randomDeleteOne() {
-	mem.store.Range(func(k string, v interface{}) bool {
-		mem.deleteValue(k, true)
-		return false
-	})
-}
-
-// 删除已经过期的 expire key， 如果一个就没有删除，则随机删除一个有效的 expire key
-// 如果 int=0 则证明没有删除任何 key
-func (mem *MemCacheImpl) randomDeleteExpireKey() int {
-	c := mem.expireClean()
-	if c > 0 {
-		return c
-	}
-
-	mem.store.Range(func(k string, v interface{}) bool {
-		if v.(expireValue).Expire != -1 {
-			mem.deleteValue(k, true)
-			c++
-			return false
-		}
-		return true
-	})
-
-	return c
-}
-
-// AutoCleanExpireKey 自动在一定时间内清理过期key
+// AutoCleanExpireKey 自动在一定时间内清理过期 key
 // 当设置了大量的 expire key 且通常只读取一次的情况下再建议使用。
-// interval 建议设置大一点，否则可能影响读性能，建议设置 5 minute
-// go AutoCleanExpireKey(5 * time.Minute)
-func (mem *MemCacheImpl) AutoCleanExpireKey(interval time.Duration) {
+// interval 建议设置大一点，否则可能影响写入性能，建议设置 5-10 minute
+func (mem *MemCache) AutoCleanExpireKey(interval time.Duration) {
 	mem.once.Do(func() {
-		ticker := time.NewTicker(interval)
-		for {
-			if mem.isClosed() {
-				ticker.Stop()
-				return
+		go func() {
+			ticker := time.NewTicker(interval)
+			for {
+				select {
+				case <-mem.exit:
+					ticker.Stop()
+					return
+				case <-ticker.C:
+					mem.expireClean()
+				}
 			}
-			select {
-			case <-ticker.C:
-				mem.expireClean()
-			}
-		}
+		}()
 	})
 }
 
 // 在超量后，才执行此函数
-func (mem *MemCacheImpl) expireClean() int {
-	if mem.isClosed() {
-		return 0
-	}
-
+func (mem *MemCache) expireClean() int {
 	keys := make([]string, 0)
+	nowSec := time.Now().Unix()
 	mem.store.Range(func(k string, v interface{}) bool {
-		if v.(expireValue).isExpire() {
+		if v.(expireValue).isExpire(nowSec) {
 			keys = append(keys, k)
 		}
 		return true
 	})
 
 	for _, key := range keys {
-		mem.deleteValue(key, true)
+		mem.store.Delete(key)
 	}
-
 	// 删除数量
 	return len(keys)
 }
 
-func (mem *MemCacheImpl) GobRegisterCustomType(v interface{}) {
-	gob.Register(v)
+// GobRegister 注册自定义结构
+func (mem *MemCache) GobRegister(v ...interface{}) {
+	for _, vv := range v {
+		if vv != nil {
+			gob.Register(vv)
+		}
+	}
 }
 
-func (mem *MemCacheImpl) WriteToDisk() error {
-	input := bytes.Buffer{}
-	enc := gob.NewEncoder(&input)
+// WriteToDisk 缓存内容写入磁盘，当缓存内容比较大时，不建议写入磁盘，比较耗费时间
+func (mem *MemCache) WriteToDisk() error {
 
-	values := make(map[string]expireValue, mem.currentCapacity)
+	data := bytes.Buffer{}
+	enc := gob.NewEncoder(&data)
+
+	nowSec := time.Now().Unix()
+	values := make(map[string]expireValue, mem.Size())
 	mem.store.Range(func(k string, v interface{}) bool {
 		value := v.(expireValue)
-		if !value.isExpire() {
+		if !value.isExpire(nowSec) {
 			values[k] = value
 		}
 		return true
 	})
-
+	log.Printf("WriteToDisk: to save the %d keys,in progress JSON encoding\n", len(values))
 	err := enc.Encode(values)
 	if err != nil {
 		return err
 	}
-
-	return mem.disk.WriteToFile(input.Bytes())
+	log.Printf("WriteToDisk: the encoded data size is %.2fMB\n", float64(data.Len())/1024/1024)
+	return mem.disk.WriteToFile(data.Bytes())
 }
 
-func (mem *MemCacheImpl) LoadFromDisk() error {
+// LoadFromDisk 从磁盘中读取缓存内容，过过滤掉已经过期的内容
+func (mem *MemCache) LoadFromDisk() error {
 	values := make(map[string]expireValue, 0)
 
-	byt, err := mem.disk.ReadFromFile()
+	data, err := mem.disk.ReadFromFile()
 	if err != nil {
 		return err
 	}
+	log.Printf("LoadFromDisk: the encoded data size is %.2fMB\n", float64(len(data))/1024/1024)
 
-	if len(byt) == 0 {
+	if len(data) == 0 {
 		return nil
 	}
 
-	out := bytes.Buffer{}
-	out.Write(byt)
-	dec := gob.NewDecoder(&out)
+	store := bytes.Buffer{}
+	store.Write(data)
+	dec := gob.NewDecoder(&store)
 	err = dec.Decode(&values)
 	if err != nil {
 		return err
 	}
 
+	nowSec := time.Now().Unix()
+
 	for k, v := range values {
-		if !v.isExpire() {
+		if !v.isExpire(nowSec) {
 			// 没有过期再写入
-			mem.setValue(k, v.Value, v.validExpire())
+			mem.setValue(k, v.Value, v.surplusSec(nowSec))
 		}
 	}
 

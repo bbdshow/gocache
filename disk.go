@@ -23,7 +23,7 @@ func NewDisk(filename string) *Disk {
 		if err != nil {
 			panic(fmt.Sprintf("get current dir error %v", err))
 		}
-		filename = filepath.Join(dir, "data.cache")
+		filename = filepath.Join(dir, "gocache")
 	} else {
 		f, err := filepath.Abs(filename)
 		if err != nil {
